@@ -1,37 +1,50 @@
 module Eval where
 
-open import lib
+open import lib hiding (_>>=_ ; return)
+open import Monad
 open import Syntax
 
-arith : Op → Value → Value → Value
-arith _ (B b) _ = Fail
-arith _ Loop _ = Loop
-arith _ Fail _ = Fail
-arith _ _ Loop = Loop
-arith Add (I x) (I y) = I (x +ℤ y)
-arith Mult (I x) (I y) = I (x *ℤ y)
-arith _ _ _ = Fail
+add : Val → Val → Result Val
+add (I x) (I y) = Value (I (x +ℤ y))
+add _ _ = Fail
 
-cond : Value → Value → Value → Value
+cond : Val → Result Val → Result Val → Result Val
 cond (B x) y z = if x then y else z
-cond Loop _ _ = Loop
 cond _ _ _ = Fail
 
-search : ℕ → (ℕ → Value) → Value
-search g vv with vv g
-search g vv | I k with k =ℤ 0ℤ 
-search g vv | I k | tt = I (toℤ g)
-search (suc g) vv | I k | ff = vv g
-search 0 vv | I k | ff = Loop
-search g vv | B x = Fail
-search g vv | Fail = Fail
-search g vv | Loop = Loop
+mutual 
+ search : ℕ → (ℕ → Result Val) → Result Val
+ search g vv =
+  do
+   d ← vv g
+   searchh g vv d 
+ searchh : ℕ → (ℕ → Result Val) → Val → Result Val
+ searchh g vv (B x) = Fail
+ searchh g vv (I x) with x =ℤ 0ℤ
+ searchh g vv (I x) | tt = Value (I (toℤ g))
+ searchh zero vv (I x) | ff = Unfinished
+ searchh (suc g) vv (I x) | ff = search g vv
+
+isZero : Val → Result Val
+isZero (I x) = Value (B (x =ℤ 0ℤ))
+isZero _ = Fail
 
 -- g bounds searches, v is the value of the variable
-eval : ℕ → Expr → ℕ → Value
-eval g Var v = I (toℤ v)
-eval g (Val x) v = x
-eval g (Arith op e1 e2) v = arith op (eval g e1 v) (eval g e2 v)
-eval g (If e1 e2 e3) v = cond (eval g e1 v) (eval g e2 v) (eval g e3 v)
+eval : ℕ → Expr → ℕ → Result Val
+eval g Var v = Value (I (toℤ v))
+eval g (Value x) v = Value x
+eval g (Add e1 e2) v =
+  do
+    r1 ← eval g e1 v
+    r2 ← eval g e2 v
+    add r1 r2
+eval g (IsZero e) v =
+  do
+    r ← eval g e v
+    isZero r
+eval g (Cond e1 e2 e3) v =
+  do
+    b ← eval g e1 v
+    cond b (eval g e2 v) (eval g e3 v)
 eval g (Search e) _ = search g (eval g e)
 

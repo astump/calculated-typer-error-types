@@ -1,106 +1,117 @@
 module Typing where
 
-open import lib
+open import lib hiding (_>>=_ ; return)
 open import Sign
 open import Syntax
+open import Monad
 
-data Type : Set where
-  INT : 𝔹 → Type     -- tt means might diverge
-  BOOL : 𝔹 → Type
-  FAIL : Type
-  UNKNOWN : Type
-  LOOP : Type
+data Data : Set where
+  INT : Data
+  BOOL : Data
 
-tval : Value → Type
-tval (I _) = INT ff
-tval (B _) = BOOL ff
-tval Fail = FAIL
-tval Loop = LOOP
+_=c_ : Data → Data → 𝔹
+INT =c INT = tt
+BOOL =c BOOL = tt
+_ =c _ = ff
 
-infix 7 _⊓_ 
+=c≡ : ∀{d d' : Data} → d =c d' ≡ tt → d ≡ d'
+=c≡ {INT} {INT} e = refl
+=c≡ {BOOL} {BOOL} e = refl
 
-_⊓_ : Type → Type → Type
-(INT b1) ⊓ (INT b2) = INT (b1 || b2)
-(BOOL b1) ⊓ (BOOL b2) = BOOL (b1 || b2)
-FAIL ⊓ FAIL = FAIL
+data RType : Set where
+  DATA : (c : Data) → RType
+  UNFINISHED : RType
+  FAIL : RType
+
+data EType (X : Set) : Set where
+  DATA : (b : 𝔹)(c : X) → EType X -- if the 𝔹 is tt, it means the expression could diverge; otherwise not
+  FAIL : 𝔹 → EType X
+  UNKNOWN : EType X
+  LOOP : EType X
+
+infix 8 _⊓_
+
+_⊓_ : EType Data → EType Data → EType Data
+DATA b c ⊓ DATA b₁ c₁ = if c =c c₁ then DATA (b || b₁) c else UNKNOWN
+DATA b c ⊓ FAIL x = UNKNOWN
+DATA b c ⊓ UNKNOWN = UNKNOWN
+DATA b c ⊓ LOOP = DATA tt c
+FAIL b ⊓ DATA b₁ c = UNKNOWN
+FAIL b ⊓ FAIL b' = FAIL (b || b')
+FAIL b ⊓ UNKNOWN = UNKNOWN
+FAIL b ⊓ LOOP = FAIL tt 
+UNKNOWN ⊓ e2 = UNKNOWN
+LOOP ⊓ DATA b c = DATA tt c
+LOOP ⊓ FAIL b = FAIL tt
+LOOP ⊓ UNKNOWN = UNKNOWN
 LOOP ⊓ LOOP = LOOP
-LOOP ⊓ (INT _) = INT tt
-(INT _) ⊓ LOOP = INT tt
-LOOP ⊓ (BOOL _) = BOOL tt
-(BOOL _) ⊓ LOOP = BOOL tt
-_ ⊓ _ = UNKNOWN
 
--- b ↑ T  means T in a context which is possibly diverging iff b is tt 
-_↑_ : 𝔹 → Type → Type
-b ↑ (INT b') = INT (b || b')
-b ↑ (BOOL b') = BOOL (b || b')
-tt ↑ FAIL = UNKNOWN
-ff ↑ FAIL = FAIL
-b ↑ UNKNOWN = UNKNOWN
-_ ↑ LOOP = LOOP
+infix 8 _⇓_ 
 
+-- b ⇓ t  means t in a context which is possibly diverging iff b is tt 
+_⇓_ : ∀{A : Set} → 𝔹 → EType A → EType A
+b ⇓ DATA b' t = DATA (b || b') t
+b ⇓ t = t
 
-arith' : Type → Type → Type
-arith' t1 t2 with t1 ⊓ t2
-arith' t1 t2 | BOOL tt = UNKNOWN
-arith' t1 t2 | BOOL ff = FAIL
-arith' t1 t2 | v = v
+infix 8 _>>=e_
 
--- maybe need to use a ⊓ operator to handle cases like
--- 
---    cond' (BOOL tt) (INT tt) (INT tt) ≪ cond' (BOOL tt) (INT tt) LOOP
+_>>=e_ : ∀{A B : Set} → EType A → (A → EType B) → EType B
+DATA b t >>=e f = b ⇓ f t
+FAIL b >>=e f = FAIL b
+UNKNOWN >>=e f = UNKNOWN
+LOOP >>=e f = LOOP
 
-cond' : Type → Type → Type → Type
-cond' (BOOL b1) t1 t2 = b1 ↑ (t1 ⊓ t2)
-cond' FAIL _ _ = FAIL
-cond' LOOP _ _ = LOOP
-cond' (INT tt) _ _ = UNKNOWN
-cond' (INT ff) _ _ = FAIL
-cond' UNKNOWN _ _ = UNKNOWN
+returne : ∀{A : Set} → A → EType A
+returne x = DATA ff x
 
-search' : Type → Sign → Type
-search' (INT _) Pos = LOOP
-search' (INT _) _ = INT tt
-search' (BOOL ff) _ = FAIL
-search' (BOOL tt) _ = UNKNOWN -- we should really generalize so we can have FAIL tt here
-search' UNKNOWN _ = UNKNOWN
-search' LOOP _ = LOOP
-search' FAIL _ = FAIL
+instance
+  ETypeMonad : Monad EType
+  ETypeMonad = record { return = returne ; _>>=_ = _>>=e_ }
+ 
+tval : Val → Data
+tval (I _) = INT
+tval (B _) = BOOL
 
+tresult : Result Val → RType
+tresult (Value v) = DATA (tval v)
+tresult Fail = FAIL 
+tresult Unfinished = UNFINISHED
 
-texp : Expr → Type
-texp (Val v) = tval v
-texp (Arith _ e1 e2) = arith' (texp e1) (texp e2) 
-texp (If e1 e2 e3) = cond' (texp e1) (texp e2) (texp e3)
-texp Var = INT ff
-texp (Search e) = search' (texp e) (sign e)
+add' : Data → Data → EType Data
+add' INT INT = DATA ff INT
+add' _ _ = FAIL ff
 
-infix 6 _≪_ 
+isZero' : Data → EType Data
+isZero' INT = DATA ff BOOL
+isZero' _ = FAIL ff
 
-data _≪_ : Type → Type → Set where
-  ≪Unknown : ∀ {T : Type} → UNKNOWN ≪ T
-  ≪Refl : ∀{T : Type} → T ≪ T
-  ≪Int : INT tt ≪ INT ff
-  ≪Bool : BOOL tt ≪ BOOL ff
-  ≪IntLoop : INT tt ≪ LOOP
-  ≪BoolLoop : BOOL tt ≪ LOOP
+cond' : Data → EType Data → EType Data → EType Data
+cond' BOOL t1 t2 = t1 ⊓ t2 
+cond' _ _ _ = FAIL ff
 
-≪-trans : ∀{t1 t2 t3 : Type} →
-            t1 ≪ t2 →
-            t2 ≪ t3 →
-            t1 ≪ t3
-≪-trans ≪Unknown ≪Unknown = ≪Unknown
-≪-trans ≪Unknown ≪Refl = ≪Unknown
-≪-trans ≪Refl ≪Unknown = ≪Unknown
-≪-trans ≪Refl ≪Refl = ≪Refl
-≪-trans ≪Unknown d' = ≪Unknown
-≪-trans ≪Refl d' = d'
-≪-trans ≪Int ≪Refl = ≪Int 
-≪-trans ≪Bool ≪Refl = ≪Bool
-≪-trans ≪IntLoop ≪Refl = ≪IntLoop
-≪-trans ≪BoolLoop ≪Refl = ≪BoolLoop
+search' : Data → Sign 𝔹 → EType Data
+search' INT (Known tt) = LOOP
+search' INT _ = DATA tt INT
+search' _ _ = FAIL tt
 
-{-search'-INT-ff : ∀{s : Sign} → search' (INT ff) s ≪ INT ff
-search'-INT-ff {Pos} = {!!}
-search'-INT-ff {Nonneg} = ≪Int
-search'-INT-ff {Unknown} = ≪Int-}
+texp : Expr → EType Data
+texp Var = DATA ff INT
+texp (Value v) = DATA ff (tval v)
+texp (Add e1 e2) = 
+ do
+   t1 ← texp e1
+   t2 ← texp e2
+   add' t1 t2
+texp (IsZero e) =
+ do
+   t ← texp e
+   isZero' t
+texp (Cond e1 e2 e3) =
+ do
+   t1 ← texp e1
+   cond' t1 (texp e2) (texp e3)
+texp (Search e) =
+ do
+   t ← texp e
+   search' t (sexp e)
+
