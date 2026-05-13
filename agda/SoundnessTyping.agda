@@ -40,12 +40,13 @@ infixr 8 _>>=≪_
 _>>=≪_ : ∀{a : EType Data}{a' : Result Val} →
         {f : Data → EType Data}{f' : Val → Result Val} → 
          a ≪ tresult a' →
-         (∀{v : Val}
-           {q : ∃ 𝔹 (λ b → a ≡ DATA b (tval v))}
-           {q' : a' ≡ Value v} → 
+         (∀{v : Val}{b : 𝔹}
+           {q : a ≡ DATA b (tval v)}
+           {q' : a' ≡ Value v}
+           {q'' : DATA b (tval v) ≪ DATA (tval v)} → 
            f (tval v) ≪ tresult (f' v)) → 
         (a >>=e f) ≪ tresult (a' >>=r f')
-_>>=≪_ {DATA b c} {Value x} {f} {f'} ≪Data d2 = ⇓mono (d2{x}{b , refl}{refl})
+_>>=≪_ {DATA b c} {Value x} {f} {f'} ≪Data d2 = ⇓mono (d2{x}{b}{refl}{refl}{≪Data})
 _>>=≪_ {DATA b c} {Unfinished} {f} {f'} ≪Unfinished d2 = ≪Unfinished
 _>>=≪_ {FAIL b} {Fail} {f} {f'} d1 d2 = ≪Fail
 _>>=≪_ {FAIL b} {Unfinished} {f} {f'} d1 d2 = ≪Unfinished
@@ -143,17 +144,19 @@ mutual
  case-search{s}{vv}{g} dd d' rewrite sym (⇓search'INT{s}) = d''
    where inj2-DATA : ∀{b b' : 𝔹}{t t' : Data} → DATA b t ≡ DATA b' t' → t ≡ t'
          inj2-DATA refl = refl
-         dv : ∀{v : Val}{n : ℕ} →
-              ∃ 𝔹 (λ b → DATA tt INT ≡ DATA b (tval v)) → 
+         dv : ∀{v : Val}{n : ℕ}{b : 𝔹} →
+              DATA tt INT ≡ DATA b (tval v) → 
               DATA tt (tval v) ≪ tresult (vv n)
-         dv{v}{n} (_ , e) rewrite sym (inj2-DATA e) = dd
-   
+         dv{v}{n} e rewrite sym (inj2-DATA e) = dd
+
+
          h : ∀{v : Val}{r : Result Val} →
              s ≪sign sresult r →
              r ≡ Value v →
              s ≪sign sval v
          h d1 refl = d1
-         d'' = _>>=≪_{DATA tt INT}{vv g}{λ v → search' v s} (dd{g}) (λ{v}{q'}{q} → case-searchh{v}{s}{vv}{g}{tt} (dv q') d' (h (d'{g}) q)) 
+         d'' = _>>=≪_{DATA tt INT}{vv g}{λ v → search' v s} (dd{g})
+               (λ{v}{b}{q'}{q}{q''} → case-searchh{v}{s}{vv}{g}{tt} (dv q') d' (h (d'{g}) q)) 
 
 texp-soundness : ∀{e : Expr}{g v : ℕ} →
                  texp e ≪ tresult (eval g e v)
@@ -172,8 +175,8 @@ texp-soundness {Cond e1 e2 e3} {g} {v} =
   case-cond{v1} (texp-soundness{e2}{g}{v}) (texp-soundness{e3}{g}{v})
 texp-soundness {Search e} {g} {v} = 
   (texp-soundness{e}{g}{g}) >>=≪
-  λ{u}{q}{q'} →
-     case-searchh{u}{b = fst q} (λ{n} → h {u} {fst q} (snd' q)) (sign-soundness{e}) (h' q')
+  λ{u}{b}{q}{q'} →
+     case-searchh{u}{b = b} (λ{n} → h {u} q) (sign-soundness{e}) (h' q')
 
   where h : ∀{u : Val}{b : 𝔹}{n : ℕ} →
             texp e ≡ DATA b (tval u) →

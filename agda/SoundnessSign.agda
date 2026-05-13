@@ -10,13 +10,13 @@ infixr 8 _>>=≪sign_
 _>>=≪sign_ : ∀{a : Sign 𝔹}{a' : Result Val} →
         {f : 𝔹 → Sign 𝔹}{f' : Val → Result Val} → 
          a ≪sign sresult a' →
-         (∀{b : 𝔹}{v : Val} →
+         (∀{b : 𝔹}{v : Val}{q : a ≡ Known b}{q' : a' ≡ Value v} →
            Known b ≪sign sval v → 
            f b ≪sign sresult (f' v)) → 
         (a >>=s f) ≪sign sresult (a' >>=r f')
-_>>=≪sign_ {Known b} {Value (I (mkℤ zero triv))} {f} {f'} ≪Refl d2 = d2 ≪Refl
-_>>=≪sign_ {Known b} {Value (I (mkℤ (suc n) tt))} {f} {f'} ≪Refl d2 = d2 ≪Refl
-_>>=≪sign_ {Known b} {Value (I (mkℤ (suc n) tt))} {f} {f'} ≪Nonneg d2 = d2 ≪Nonneg
+_>>=≪sign_ {Known b} {Value (I (mkℤ zero triv))} {f} {f'} ≪Refl d2 = d2{q = refl}{q' = refl} ≪Refl
+_>>=≪sign_ {Known b} {Value (I (mkℤ (suc n) tt))} {f} {f'} ≪Refl d2 = d2{q = refl}{q' = refl} ≪Refl
+_>>=≪sign_ {Known b} {Value (I (mkℤ (suc n) tt))} {f} {f'} ≪Nonneg d2 = d2{q = refl}{q' = refl} ≪Nonneg
 _>>=≪sign_ {Unknown} {Value x} {f} {f'} d1 d2 = ≪Unknown
 _>>=≪sign_ {Unknown} {Fail} {f} {f'} d1 d2 = ≪Unknown
 _>>=≪sign_ {Unknown} {Unfinished} {f} {f'} d1 d2 = ≪Unknown
