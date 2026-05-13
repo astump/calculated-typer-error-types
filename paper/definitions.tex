@@ -1,0 +1,90 @@
+
+\newcommand{\abs}[4]{{#1}\, #2\! : \! #3.\, #4}
+\newcommand{\absu}[3]{{#1}\, #2.\, #3}
+\mathchardef\mhyph="2D % Define a "math hyphen"
+
+% unicode
+\usepackage[utf8]{inputenc}
+\DeclareUnicodeCharacter{3BB}{\ensuremath{\lambda}}
+\DeclareUnicodeCharacter{3B4}{\ensuremath{\delta}}
+\DeclareUnicodeCharacter{3C9}{\ensuremath{\omega}}
+\DeclareUnicodeCharacter{3B3}{\ensuremath{\gamma}}
+\DeclareUnicodeCharacter{3C4}{\ensuremath{\tau}}
+\DeclareUnicodeCharacter{21D2}{\ensuremath{\To}}
+\DeclareUnicodeCharacter{22B2}{\ensuremath{\lhd}}
+\DeclareUnicodeCharacter{2080}{\ensuremath{_0}}
+%\definecolor{darkred}{RGB}{100,10,10}
+
+
+\newcommand{\BD}[1]{\textcolor{olive}{[BD: #1]}}
+\newcommand{\PA}[1]{\textcolor{cyan}{[PA: #1]}}
+
+\newcommand{\utp}[0]{\mathcal{U}}
+\newcommand{\lin}[0]{\lambda^{\iota\nu}}
+\newcommand{\interp}[1]{\llbracket #1 \rrbracket}
+\newcommand{\interpl}[0]{\llbracket}
+\newcommand{\interpr}[0]{\rrbracket}
+\newcommand{\choice}[0]{\xi}
+\newcommand{\simto}[0]{\triangleright}
+\newcommand{\elcap}[0]{\cap}
+
+\newcommand{\dedu}[0]{\triangleright}
+\newcommand{\ctxtup}[1]{\ulcorner #1 \urcorner}
+\newcommand{\ctxtdn}[1]{\llcorner #1 \lrcorner}
+\newcommand{\ctxtmv}[1]{\langle #1 \rangle}
+
+\newcommand{\case}[1]{\noindent\underline{Case #1:}}
+\newcommand{\caseb}[0]{\noindent\underline{Case:}}
+
+\newcommand{\pcase}[1]{\noindent\underline{#1:}}
+
+
+\newcommand{\adbmal}[0]{\reflectbox{$\lambda$}}
+
+\newcommand{\casetri}[0]{\RHD}
+\newcommand{\lke}[0]{\lhd}
+
+\newcommand{\lam}[2]{\lambda\, #1.\, #2}
+\newcommand{\mal}[2]{\abdmal\, #1.\, #2}
+\newcommand{\all}[2]{\forall\, #1.\, #2}
+\newcommand{\Lam}[2]{\Lambda\, #1.\, #2}
+\newcommand{\thereis}[2]{\exists\, #1.\, #2}
+\newcommand{\nuu}[2]{\nu\, #1.\,#2}
+\newcommand{\inn}[2]{\langle #1 \rangle_{#2}}
+\newcommand{\exel}[2]{\adbmal\,#1.\,#2}
+\newcommand{\recc}[2]{\textit{rec}\, #1.\, #2}
+\newcommand{\mew}[2]{\mu_{#1}\, #2}
+\newcommand{\convl}[0]{\blacktriangleleft}
+\newcommand{\convr}[0]{\blacktriangleright}
+\newcommand{\conjin}[0]{\smalltriangleleft}
+\newcommand{\conjout}[0]{\smalltriangleright}
+\newcommand{\dcdot}[0]{\mathbin{\ast}}
+\newcommand{\To}[0]{\Rightarrow}
+\newcommand{\releq}[0]{\topdoteq}
+
+\newcommand{\omga}[4]{\omega\ #1(#2)\,:\,#3.\ #4}
+\newcommand{\clause}[2]{#1 \to #2}
+
+\newcommand{\hysep}[0]{\mathbin{\blacklozenge}}
+
+\newcommand{\todo}[1]{\textbf{[#1]}}
+\newcommand{\rref}[1]{\{\ref{#1}\}}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{notation}[theorem]{Notation}
+\newtheorem{proposition}[theorem]{Proposition}
+
+
+%\newtheorem{definition}[theorem]{Definition}
+
+
+% \newenvironment{mycomment}
+%     {\color{blue} \it
+%     }
+%     {
+%     }
+\newcommand{\shift}[2]{{\uparrow^{#1}_{#2}}}
+\newcommand{\textblue}[1]{\textcolor{blue}{#1}}
