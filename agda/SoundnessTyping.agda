@@ -55,20 +55,25 @@ _>>=≪_ {UNKNOWN} {Fail} {f} {f'} d1 d2 = ≪Unknown
 _>>=≪_ {UNKNOWN} {Unfinished} {f} {f'} d1 d2 = ≪Unknown
 _>>=≪_ {LOOP} {Unfinished} {f} {f'} d1 d2 = ≪Unfinished
 
+Unknown⊓ : ∀{a : EType Data} → UNKNOWN ⊓ a ≡ UNKNOWN
+Unknown⊓ {DATA b c} = refl
+Unknown⊓ {FAIL x} = refl
+Unknown⊓ {UNKNOWN} = refl
+Unknown⊓ {LOOP} = refl
+
 ⊓lb1 : ∀{a b : EType Data}{a' b' : RType} →
       a ≪ a' →
       b ≪ b' →
       a ⊓ b ≪ a'
-⊓lb1 {a} {b} {a'} {b'} ≪Unknown d2 = ≪Unknown
+⊓lb1 {a} {b} {a'} {b'} ≪Unknown d2 rewrite Unknown⊓{b} = ≪Unknown
 ⊓lb1 {a} {DATA b T} {a'} {b'} (≪Data{T'}) d2 with T' =c T 
 ⊓lb1 {a} {DATA b T} {a'} {b'} (≪Data{T'}) d2 | tt = ≪Data
 ⊓lb1 {a} {DATA b T} {a'} {b'} (≪Data{T'}) d2 | ff = ≪Unknown
 ⊓lb1 {a} {FAIL x} {a'} {b'} ≪Data d2 = ≪Unknown
-⊓lb1 {a} {UNKNOWN} {a'} {b'} ≪Data d2 = ≪Unknown
+⊓lb1 {a} {UNKNOWN} {a'} {b'} d1 d2 = ≪Unknown
 ⊓lb1 {a} {LOOP} {a'} {b'} ≪Data d2 = ≪Data
 ⊓lb1 {a} {DATA b c} {a'} {b'} ≪Fail d2 = ≪Unknown
 ⊓lb1 {a} {FAIL x} {a'} {b'} ≪Fail d2 = ≪Fail
-⊓lb1 {a} {UNKNOWN} {a'} {b'} ≪Fail d2 = ≪Unknown
 ⊓lb1 {a} {LOOP} {a'} {b'} ≪Fail d2 = ≪Fail
 ⊓lb1 {a} {b} {a'} {b'} ≪Unfinished d2 = ≪Unfinished
 

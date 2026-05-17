@@ -29,29 +29,25 @@ data EType (X : Set) : Set where
   UNKNOWN : EType X
   LOOP : EType X
 
-infix 8 _⊓_
-
-_⊓_ : EType Data → EType Data → EType Data
-DATA b c ⊓ DATA b₁ c₁ = if c =c c₁ then DATA (b || b₁) c else UNKNOWN
-DATA b c ⊓ FAIL x = UNKNOWN
-DATA b c ⊓ UNKNOWN = UNKNOWN
-DATA b c ⊓ LOOP = DATA tt c
-FAIL b ⊓ DATA b₁ c = UNKNOWN
-FAIL b ⊓ FAIL b' = FAIL (b || b')
-FAIL b ⊓ UNKNOWN = UNKNOWN
-FAIL b ⊓ LOOP = FAIL tt 
-UNKNOWN ⊓ e2 = UNKNOWN
-LOOP ⊓ DATA b c = DATA tt c
-LOOP ⊓ FAIL b = FAIL tt
-LOOP ⊓ UNKNOWN = UNKNOWN
-LOOP ⊓ LOOP = LOOP
-
 infix 8 _⇓_ 
 
 -- b ⇓ t  means t in a context which is possibly diverging iff b is tt 
 _⇓_ : ∀{A : Set} → 𝔹 → EType A → EType A
 b ⇓ DATA b' t = DATA (b || b') t
+b ⇓ FAIL b' = FAIL (b || b')
 b ⇓ t = t
+
+infix 8 _⊓_
+
+_⊓_ : EType Data → EType Data → EType Data
+t ⊓ UNKNOWN = UNKNOWN
+UNKNOWN ⊓ t = UNKNOWN
+DATA b c ⊓ DATA b' c' = if c =c c' then DATA (b || b') c else UNKNOWN
+DATA _ _ ⊓ FAIL _ = UNKNOWN
+FAIL _ ⊓ DATA _ _ = UNKNOWN
+FAIL b ⊓ FAIL b' = FAIL (b || b')
+t ⊓ LOOP = tt ⇓ t
+LOOP ⊓ t = tt ⇓ t
 
 infix 8 _>>=e_
 
@@ -78,11 +74,11 @@ tresult Fail = FAIL
 tresult Unfinished = UNFINISHED
 
 add' : Data → Data → EType Data
-add' INT INT = DATA ff INT
+add' INT INT = return INT
 add' _ _ = FAIL ff
 
 isZero' : Data → EType Data
-isZero' INT = DATA ff BOOL
+isZero' INT = return BOOL
 isZero' _ = FAIL ff
 
 cond' : Data → EType Data → EType Data → EType Data
@@ -92,11 +88,11 @@ cond' _ _ _ = FAIL ff
 search' : Data → Sign 𝔹 → EType Data
 search' INT (Known tt) = LOOP
 search' INT _ = DATA tt INT
-search' _ _ = FAIL tt
+search' _ _ = FAIL ff
 
 texp : Expr → EType Data
-texp Var = DATA ff INT
-texp (Value v) = DATA ff (tval v)
+texp Var = return INT
+texp (Value v) = return (tval v)
 texp (Add e1 e2) = 
  do
    t1 ← texp e1

@@ -5,7 +5,7 @@ open import Monad
 open import Syntax
 
 add : Val → Val → Result Val
-add (I x) (I y) = Value (I (x +ℤ y))
+add (I x) (I y) = return (I (x +ℤ y))
 add _ _ = Fail
 
 cond : Val → Result Val → Result Val → Result Val
@@ -21,18 +21,18 @@ mutual
  searchh : ℕ → (ℕ → Result Val) → Val → Result Val
  searchh g vv (B x) = Fail
  searchh g vv (I x) with x =ℤ 0ℤ
- searchh g vv (I x) | tt = Value (I (toℤ g))
+ searchh g vv (I x) | tt = return (I (toℤ g))
  searchh zero vv (I x) | ff = Unfinished
  searchh (suc g) vv (I x) | ff = search g vv
 
 isZero : Val → Result Val
-isZero (I x) = Value (B (x =ℤ 0ℤ))
+isZero (I x) = return (B (x =ℤ 0ℤ))
 isZero _ = Fail
 
 -- g bounds searches, v is the value of the variable
 eval : ℕ → Expr → ℕ → Result Val
-eval g Var v = Value (I (toℤ v))
-eval g (Value x) v = Value x
+eval g Var v = return (I (toℤ v))
+eval g (Value x) v = return x
 eval g (Add e1 e2) v =
   do
     r1 ← eval g e1 v
