@@ -20,8 +20,6 @@ Unknown >>=s f = Unknown
 instance
   SignMonad : Monad Sign 
   SignMonad = record { return = returns ; _>>=_ = _>>=s_ }
- 
-
 
 Pos : Sign 𝔹
 Pos = Known tt
@@ -49,11 +47,4 @@ sexp (Add e e') =
     s' ← sexp e'
     return (s || s')
 sexp _ = Unknown
-
-infix 6 _≪sign_ 
-
-data _≪sign_ : Sign 𝔹 → Sign 𝔹 → Set where
-  ≪Unknown : ∀ {s} → Unknown ≪sign s
-  ≪Refl : ∀{s} → s ≪sign s
-  ≪Nonneg : Nonneg ≪sign Pos
 

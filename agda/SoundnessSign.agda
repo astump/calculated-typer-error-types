@@ -5,6 +5,20 @@ open import Sign
 open import Syntax
 open import Eval
 
+infix 6 _≪sign_ 
+
+data _≪sign_ : Sign 𝔹 → Sign 𝔹 → Set where
+  ≪Unknown : ∀ {s} → Unknown ≪sign s
+  ≪Refl : ∀{s} → s ≪sign s
+  ≪Nonneg : Nonneg ≪sign Pos
+
+return≪sign : ∀{v : Val} → 
+              (sval v) ≪sign sresult (returnr v)
+return≪sign {I (mkℤ zero triv)} = ≪Refl
+return≪sign {I (mkℤ (suc n) tt)} = ≪Refl
+return≪sign {I (mkℤ (suc n) ff)} = ≪Refl
+return≪sign {B x} = ≪Refl
+
 infixr 8 _>>=≪sign_
 
 _>>=≪sign_ : ∀{a : Sign 𝔹}{a' : Result Val} →
@@ -35,18 +49,18 @@ sign-add {b} {b'} {I (mkℤ (suc n) tt)} {I (mkℤ (suc n₁) tt)} ≪Refl ≪No
 sign-add {b} {b'} {I (mkℤ (suc n) tt)} {I (mkℤ (suc n₁) tt)} ≪Nonneg ≪Refl = ≪Refl
 sign-add {b} {b'} {I (mkℤ (suc n) tt)} {I (mkℤ (suc n₁) tt)} ≪Nonneg ≪Nonneg = ≪Nonneg
 
-sign-soundness : ∀{e : Expr}{g v : ℕ} →
+sexp-soundness : ∀{e : Expr}{g v : ℕ} →
                  sexp e ≪sign sresult (eval g e v)
-sign-soundness {Var} {g} {zero} = ≪Refl
-sign-soundness {Var} {g} {suc v} = ≪Nonneg
-sign-soundness {Value x} {g} {v} = ≪Refl
-sign-soundness {Add e1 e2} {g} {v} =
-  _>>=≪sign_{sexp e1}{eval g e1 v} (sign-soundness{e1}{g}{v})
+sexp-soundness {Var} {g} {zero} = ≪Refl
+sexp-soundness {Var} {g} {suc v} = ≪Nonneg
+sexp-soundness {Value x} {g} {v} = ≪Refl
+sexp-soundness {Add e1 e2} {g} {v} =
+  _>>=≪sign_{sexp e1}{eval g e1 v} (sexp-soundness{e1}{g}{v})
   (λ{b}{u} q →
-  _>>=≪sign_ {sexp e2} {eval g e2 v} (sign-soundness {e2} {g} {v})
+  _>>=≪sign_ {sexp e2} {eval g e2 v} (sexp-soundness {e2} {g} {v})
   (λ{b'}{u'} q' → sign-add q q'))
 
-sign-soundness {IsZero e} {g} {v} = ≪Unknown
-sign-soundness {Cond e e₁ e₂} {g} {v} = ≪Unknown
-sign-soundness {Search e} {g} {v} = ≪Unknown
+sexp-soundness {IsZero e} {g} {v} = ≪Unknown
+sexp-soundness {Cond e e₁ e₂} {g} {v} = ≪Unknown
+sexp-soundness {Search e} {g} {v} = ≪Unknown
 

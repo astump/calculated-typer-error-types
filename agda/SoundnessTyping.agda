@@ -165,23 +165,24 @@ mutual
 
 texp-soundness : ∀{e : Expr}{g v : ℕ} →
                  texp e ≪ tresult (eval g e v)
-texp-soundness {Var} {g} {v} = ≪Data
 texp-soundness {Value x} {g} {v} = return≪
+texp-soundness {Var} {g} {v} = return≪{v = I (toℤ v)}
 texp-soundness {Add e1 e2} {g} {v} = 
-  (texp-soundness{e1}{g}{v}) >>=≪
-  λ{v1} →
-   texp-soundness{e2}{g}{v} >>=≪
-   λ{v2} → case-add
+  texp-soundness{e1}{g}{v} >>=≪
+  texp-soundness{e2}{g}{v} >>=≪
+  case-add
 texp-soundness {IsZero e} {g} {v} = 
-  (texp-soundness{e}{g}{v}) >>=≪
-  case-isZero 
+  texp-soundness{e}{g}{v} >>=≪
+  case-isZero  
 texp-soundness {Cond e1 e2 e3} {g} {v} = 
-  (texp-soundness{e1}{g}{v}) >>=≪ λ{v1} → 
-  case-cond{v1} (texp-soundness{e2}{g}{v}) (texp-soundness{e3}{g}{v})
-texp-soundness {Search e} {g} {v} = 
-  (texp-soundness{e}{g}{g}) >>=≪
-  λ{u}{b}{q}{q'} →
-     case-searchh{u}{b = b} (λ{n} → h {u} q) (sign-soundness{e}) (h' q')
+  texp-soundness{e1}{g}{v} >>=≪ λ{v1} → 
+  case-cond{v1}
+    (texp-soundness{e2}{g}{v})
+    (texp-soundness{e3}{g}{v})
+texp-soundness {Search e} {g} {v} =  
+  texp-soundness{e}{g}{g} >>=≪
+   λ{u}{b}{q}{q'} → 
+   case-searchh{u}{b = b} (λ{n} → h {u} q) (sexp-soundness{e}) (h' q')
 
   where h : ∀{u : Val}{b : 𝔹}{n : ℕ} →
             texp e ≡ DATA b (tval u) →
@@ -191,5 +192,5 @@ texp-soundness {Search e} {g} {v} =
         h' : ∀{u : Val} →
              eval g e g ≡ Value u →
              sexp e ≪sign sval u
-        h' r with sign-soundness{e}{g}{g}
+        h' r with sexp-soundness{e}{g}{g}
         h' r | sd rewrite r = sd
