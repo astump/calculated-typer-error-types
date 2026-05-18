@@ -13,10 +13,12 @@
 \usepackage{pgflibraryshapes}
 \usepackage{pgfbaseimage}
 \usepackage{pgfplots}
+\usepackage{hyperref}
 
 \usetikzlibrary{decorations.text}
 \usetikzlibrary{trees}
 \usetikzlibrary{fadings}
+\usetikzlibrary{arrows.meta}
 
 \usepackage{xcolor}
 
@@ -104,12 +106,20 @@
 %% The abstract is a short summary of the work to be presented in the
 %% article.
 \begin{abstract}
-  This paper extends work of Garby, Bahr, and Hutton on calculating
-  type checkers, to distinguish errors that will certainly occur at
-  runtime from uncertainty due to the approximate nature of type
-  checking.  The work also extends this to a simple situation with
-  possibly diverging programs, where again we distinguish certainty of
-  divergence from uncertainty due to approximation.
+  A recent paper by Garby, Bahr, and Hutton proposes a relational
+  specification for type checkers, where types computed statically are
+  related to the types of computational results.  The relation in
+  question makes type errors less than non-error types.  This paper
+  refines this relation by introducing explicit types for terms which
+  are guaranteed to exhibit runtime errors of various kinds.  These
+  error types are distinct from a type representing uncertainty about
+  the term's runtime behavior.  The two kinds of errors considered are
+  finite failure and divergence.  To manage the complexity induced by
+  the richer partial order on types, the paper uses a monadic type
+  checker, which is then related to a fuel-bounded monadic
+  interpreter.  Proof complexity is also managed monadically, using a
+  binary indexed monad to relate typing and evaluation.  The
+  verification is carried out in Agda.
 \end{abstract}
 
 %%
@@ -140,7 +150,7 @@
 \ccsdesc[300]{Theory of computation~Program verification}
 \ccsdesc[500]{Theory of computation~Type theory}
 
-\keywords{type checking, nontermination, type errors}
+\keywords{type checking, nontermination, type errors, monads}
 
 %\received{20 February 2007}
 %\received[revised]{12 March 2009}
@@ -156,40 +166,1213 @@
 
 \section{Introduction}
 
-\citet{garby+25} presents the derivation of a type checker for a
-simple expression language, in the style of program calculation.  One
-essentially tries to prove a specification about code that has yet to
-be determined, and discovers the definitions (or constraints on them)
-necessary in the course of attempting to complete the proof.  Their
-specification states that the type computed by the type checker
-\verb|texp| for an \textit{Expr} $e$ is an approximation to the true type
-of $e$.  The true type is the type computed (by a function
-\textit{tval}) for the value of $e$, as produced by an evaluator
-\textit{eval}.  The notion of approximation is that the \textit{ERROR}
-type returned by the type checker to signal a type error approximates
-any of the types for values.  With the types shown in Figure~\ref{fig:orig},
-their specification is
-\[
-\textit{texp}\ e \le \textit{tval}\ (\textit{eval}\ e)
-\]
-
 \begin{figure}
-\begin{minted}{haskell}
+\begin{verbatim}
+data Value = I Int | B Bool | Error
+data Expr = Val Value | Add Expr Expr | If Expr Expr Expr
 data Type = INT | BOOL | ERROR
-\end{minted}
-\caption{Definitions from \citet{garby+25}}xo
+
+tval :: Value -> Type
+texp :: Expr -> Type
+eval :: Expr -> Value
+
+instance Ord Type where
+ t ⩽ t'  =  t == ERROR  ||  t == t'
+\end{verbatim}
+\caption{Definitions from \citet{garby+25}}
 \label{fig:orig}
 \end{figure}
 
 
+\citet{garby+25} present the derivation of a type checker for a simple
+expression language, in the style of program calculation.  With this
+approach, one tries to prove a specification about code that has yet
+to be determined, and discovers the definitions (or constraints on
+them) necessary in the course of attempting to complete the proof.
+Their specification states that the type computed by the type checker
+\verb|texp| for an \textit{Expr} $e$ is an approximation to the true
+type of $e$.  The true type is the type computed (by a function
+\textit{tval}) for the value of $e$, as produced by an evaluator
+\textit{eval}.  The approximation \verb|(⩽)| states that the
+\textit{ERROR} type returned by the type checker to signal a type
+error approximates any of the types for values.  With the types shown
+in Figure~\ref{fig:orig} (following the authors in writing Haskell
+with unicode), their specification is
+\[
+\textit{texp}\ e \le \textit{tval}\ (\textit{eval}\ e)
+\]
+\noindent While acknowledging that usually one would implement the
+evaluator monadically to handle runtime errors, they opt to use
+simpler typing, and include
+\verb|Error| as a \verb|Value|.
+
+In this paper, we build on the prior work of Garby et al. in the following ways:
+
+\begin{enumerate}
+\item We extend the ordering on types to distinguish known errors from uncertainty.  So we now have
+  types \verb|UNKNOWN| and \verb|FAIL|.  If an expression is of type \verb|FAIL|, that means that
+  it is guaranteed to produce a runtime error.  \verb|UNKNOWN| represents a term whose runtime behavior
+  cannot be assessed by the type checker.
+  
+  \item We add a form of possibly diverging computation to the simple
+    expression language, via a form of unbounded search.  This leads
+    to richer typing: instead of just \verb|BOOL| and \verb|INT| for
+    terms producing values of those types, we now distinguish between
+    terms which are known to terminate or ones which might diverge.  So we
+    have types \verb|BOOL b| and \verb|INT b|, where boolean \verb|b|
+    indicates whether possible divergence
+    (\verb|True|) or guaranteed termination (\verb|False|).  The
+    \verb|FAIL| type is updated similarly, to distinguish terms that
+    are guaranteed to fail at runtime, from those that fail or else diverge.
+    For computations that are \emph{guaranteed} to diverge, we
+    add a type \verb|LOOP|.
+    
+  \item With this more complex ordering on types, we adopt monadic definitions of the type
+    checker and the evaluator.
+
+  \item Using these enriched definitions, we prove the specification
+    proposed by~\citet{garby+25}, in Agda.  Here, this specification
+    involves relating two monadic computations, namely the type
+    checker and the evaluator.  To do this concisely, we make use of a
+    binary indexed monad in the proof.
+
+    \end{enumerate}
+
+The motivation for this development is to enrich the kind of
+information the type checker can provide.  Usually (and
+in~\citet{garby+25}), type checkers do not distinguish between
+situations that might lead to runtime errors, and those which must.
+Such a distinction would pave the way to providing new error
+information to programmers, when their programs do not pass the type
+checker.  One might wish, for example, to report example inputs to a
+function which are guaranteed to lead to a runtime error.  It is
+common practice to provide such information in the world of model
+checking, in the form of error traces~\cite{jhala+09}.  Formalizing
+such error reporting remains, however, for future work.  We here just
+address the issue of relating typing and evaluation with a more
+refined notion of untypability.
+
+All code following is written in Agda (checked with version 2.7.0.1),
+making modest use of an
+\href{https://github.com/cedille/ial}{alternative standard library}
+for basic data structures.  Readers unfamiliar with Agda will find
+that our code looks very similar to Haskell, except for the use of
+unicode and user-defined mixfix syntax, where underscores in the names
+of functions indicate argument positions.  Here is a brief summary of
+other Agda features we use. Pattern-matching equations can be extended
+to match on an additional expression using \verb|with|.  The
+additional argument is listed following a \verb;|; in subsequent
+equations.  The library provides types $\mathbb{Z}$ of integers,
+$\mathbb{N}$ of unary natural numbers, and $\mathbb{B}$ of booleans,
+with values \verb|tt| and \verb|ff|.  Unlike Haskell, Agda allows the
+same name to be used for a constructor of two different types, but the
+same name may not be used at both the term and type levels (because
+the notion of level is more complex in Agda).  Finally, inputs to
+functions can be designated implicit using curly braces.  Agda tries
+to infer values for those at call sites.  Occasionally this fails, and
+then the programmer may resort to writing those arguments explicitly,
+in curly braces.
+
+\section{The Expression Language}
+
+The syntax for values and expressions is in Figure~\ref{fig:syn}.  
+Similarly to Garby et al., we work with a first-order language with
+integer and boolean values.  Our expression syntax includes values (\verb|Value|),
+additions (\verb|Add|), and conditionals (\verb|Cond|), just like
+Garby et al.  We add a test for zero (\verb|IsZero|), to have a way to
+compute a boolean.  Most notably, we add a construct (\verb|Search|)
+that searches for a natural-number value that makes an expression
+evaluate to zero.  The value is substituted for a sole variable
+(\verb|Var|) allowed by the language.  
 
 
+\begin{figure}
+\begin{verbatim}
+data Val : Set where
+ I : ℤ → Val
+ B : 𝔹 → Val
+
+data Expr : Set where
+ Var : Expr
+ Value : Val → Expr
+ Add : Expr → Expr → Expr
+ IsZero : Expr → Expr
+ Cond : Expr → Expr → Expr → Expr
+ Search : Expr → Expr
+\end{verbatim}
+\caption{Values and expressions}
+\label{fig:syn}
+\end{figure}
+
+\section{The Evaluator}
+
+The evaluator produces one of three possible results, as shown in
+Figure~\ref{fig:res}.  It could produce a value (\verb|Value|),
+failure (\verb|Fail|), or report that it ran out of fuel
+(\verb|Unfinished|).  We are using a standard simple technique for
+incorporating possibly diverging functions into a total programming
+language (here, Agda), where the function takes in an extra
+natural-number input, bounding the number of steps of computation.  If
+this fuel parameter reaches zero and the computation is not complete,
+then our evaluator will return \verb|Unfinished|.
+
+\begin{figure}
+\begin{verbatim}
+data Result (V : Set) : Set where
+ Value : V → Result V
+ Fail : Result V
+ Unfinished : Result V
+\end{verbatim}
+\caption{Results produced by the evaluator}
+\label{fig:res}
+\end{figure}
+
+To reduce boilerplate in the evaluator, we define \verb|Result| as a monad, with the code in Figure~\ref{fig:resmon}.
+Values are propagated by \verb|>>=|, but \verb|Fail| and \verb|Unfinished| terminate computation.  We make use of
+Agda's approach to type classes using an \verb|instance| block, to declare that \verb|Result| is a monad.  
+
+\begin{figure}
+\begin{verbatim}
+infixr 8 _>>=r_
+
+_>>=r_ : ∀{A B : Set} → Result A → (A → Result B) → Result B
+Value x >>=r r = r x 
+Fail >>=r r' = Fail
+Unfinished >>=r r' = Unfinished
+
+returnr : ∀{A : Set} → A → Result A
+returnr = Value
+
+instance
+  ResultMonad : Monad Result 
+  ResultMonad = record { return = returnr ; _>>=_ = _>>=r_ }
+\end{verbatim}
+\caption{Monadic combinators for \texttt{Result}}
+\label{fig:resmon}
+\end{figure}
+
+Finally, we define the evaluator with typing
+
+\begin{verbatim}
+eval : ℕ → Expr → ℕ → Result Val
+\end{verbatim}
+
+\noindent In call \verb|eval g e v|, the natural \verb|g| is the fuel, and
+\verb|v| is the value for the sole variable.  We follow the proposed
+structure of Garby et al., by having a helper function for each case
+of evaluation.  So for evaluating an \verb|Add| expression, we have a
+helper function \verb|add|.  Garby et al. give this helper the type
+\verb|Value → Value → Value|.  This simple type hides some complexity,
+because \verb|Error| is included in their type for values.  Here,
+using the monadic structure of \verb|Result| we write:
+
+\begin{verbatim}
+add : Val → Val → Result Val
+add (I x) (I y) = return (I (x +ℤ y))
+add _ _ = Fail
+\end{verbatim}
+
+\noindent Our type \verb|Val| of values does not include errors (see
+Figure~\ref{fig:syn}), so to return \verb|Fail|, the result type of
+\verb|add| must use \verb|Result|.  The test for zero has just as
+simple a helper function:
+
+\begin{verbatim}
+isZero : Val → Result Val
+isZero (I x) = return (B (x =ℤ 0ℤ))
+isZero _ = Fail
+\end{verbatim}
+
+\noindent It returns a boolean value if given an integer, and otherwise fails.
+
+
+Because conditional is lazy in its then- and else-parts, we write the
+following helper for \verb|Cond|:
+
+\begin{verbatim}
+cond : Val → Result Val → Result Val → Result Val
+cond (B x) y z = if x then y else z
+cond _ _ _ = Fail
+\end{verbatim}
+
+\noindent This takes in terms of type \verb|Result Val| for then- and else-parts, representing that computation
+is not strict in those.
+
+Deferring the code for \verb|search| for a moment, this brings us to the definition of \verb|eval| in Figure~\ref{fig:eval}.
+We use \verb|do|-notation (supported by Agda) to use the monadic combinators for \verb|Result|.  In the case
+for \verb|IsZero|, for example, we bind the result of the recursive call \verb|eval g e v| to \verb|r|, which
+then has type \verb|Val|.  This value is given to the helper function \verb|isZero|, which returns a value
+of type \verb|Result Val|, as required by the return type of \verb|eval|.
+
+\begin{figure}
+\begin{verbatim}
+eval : ℕ → Expr → ℕ → Result Val
+eval g Var v = return (I (toℤ v))
+eval g (Value x) v = return x
+eval g (Add e1 e2) v =
+  do
+    r1 ← eval g e1 v
+    r2 ← eval g e2 v
+    add r1 r2
+eval g (IsZero e) v =
+  do
+    r ← eval g e v
+    isZero r
+eval g (Cond e1 e2 e3) v =
+  do
+    b ← eval g e1 v
+    cond b (eval g e2 v) (eval g e3 v)
+eval g (Search e) _ = search g (eval g e)
+\end{verbatim}
+\caption{The evaluator}
+\label{fig:eval}
+\end{figure}
+
+\subsection{Implementing \texttt{Search}}
+
+The missing piece of the evaluator is the code to process \verb|Search| expressions.  This
+is given by helper function \verb|search| in Figure~\ref{fig:search}.  Some extension of~\citet{garby+25}
+is required at this point, because on their methodology, the helper functions in the various cases
+of \verb|eval| should be presented with values (\verb|Val|), or perhaps results of computation (\verb|Result Val|).
+But for \verb|Search e|, we need to try evaluating \verb|e| repeatedly with different values for the variable.
+So it seems that the helper function \verb|search| might need to deviate from the approach in~\citet{garby+25},
+since it cannot take just a single value or result.
+
+We solve this problem by calling \verb|search| with the partial
+application \verb|eval g e|, which is missing the argument for the
+value of the sole variable of \verb|e|.  The type of this partial
+application is \verb|ℕ → Result Val|, which is what the code for
+\verb|search| in Figure~\ref{fig:search} expects for its second
+argument \verb|vv|.  The code for \verb|search| binds the value of
+\verb|vv| on the current fuel \verb|g|, and then calls the
+mutually recursive helper \verb|searchh|.  That function
+checks to see if the value is integer zero.  If so, it returns
+\verb|g| (in the \verb|Result| monad).  Otherwise, it either reports
+\verb|Unfinished| if the fuel has been exhausted, or else recursively
+continues the searches for a zero, decrementing the fuel from
+\verb|suc g| to \verb|g| (in the last equation of
+Figure~\ref{fig:search}).
+
+\begin{figure}
+\begin{verbatim}
+mutual 
+ search : ℕ → (ℕ → Result Val) → Result Val
+ search g vv =
+  do
+   d ← vv g
+   searchh g vv d 
+ searchh : ℕ → (ℕ → Result Val) → Val → Result Val
+ searchh g vv (B x) = Fail
+ searchh g vv (I x) with x =ℤ 0ℤ
+ searchh g vv (I x) | tt = return (I (toℤ g))
+ searchh zero vv (I x) | ff = Unfinished
+ searchh (suc g) vv (I x) | ff = search g vv
+\end{verbatim}
+\caption{The helper function for searching for a zero}
+\label{fig:search}
+\end{figure}
+
+\section{The Syntax of Types}
+
+Our aim is to define a type checker \verb|texp| satisfying the following version of the specification of~\citet{garby+25}:
+
+\begin{verbatim}
+texp e ≪ tresult (eval g e v)
+\end{verbatim}
+
+\noindent We will need a function \verb|tresult| to compute a type for
+a value of type \verb|Result Val|, produced by \verb|eval|.
+Differently from Garby et al., the relation $\ll$ that we use relates
+two different kinds of types.  The type produced by \verb|texp| has
+Agda type \verb|EType Data|, representing static types.  The type
+produced by \verb|tresult| has Agda type \verb|RType|, for runtime
+types.  The definitions are in Figure~\ref{fig:syntp}.  There is an
+Agda type \verb|Data| for types common to both runtime and static.
+Constructors \verb|DATA| (taking an argument of type \verb|Data|) and
+\verb|FAIL| are common to both datatypes.  In the static case
+(\verb|EType|), these constructors take a boolean argument indicating
+whether the terms might diverge (\verb|True|) or certainly terminate
+(\verb|False|).  For the situation where the evaluator runs out of
+fuel and returns \verb|Unfinished|, we have runtime type
+\verb|UNFINISHED|.  Statically, we will use a simple positivity
+analysis to detect if the search for a zero cannot possibly succeed.
+In that case, the static type is \verb|LOOP|.  Finally, static type
+\verb|UNKNOWN| represents uncertainty, as generally inherent to type
+checking.
+
+\begin{figure}
+\begin{verbatim}
+data Data : Set where
+  INT : Data
+  BOOL : Data
+
+data RType : Set where
+  DATA : (c : Data) → RType
+  UNFINISHED : RType
+  FAIL : RType
+
+data EType (X : Set) : Set where
+  DATA : (b : 𝔹)(c : X) → EType X
+  FAIL : 𝔹 → EType X
+  UNKNOWN : EType X
+  LOOP : EType X
+\end{verbatim}
+\caption{The syntax of runtime types (\texttt{RType}) and static types (\texttt{EType})}
+\label{fig:syntp}
+\end{figure}
+
+The type constructor \verb|EType| is a monad, as shown by the code in
+Figure~\ref{fig:etypemon}.  The definition of bind (\verb|>>=e|) for
+\verb|EType| expresses that known failure (\verb|FAIL|), uncertainty
+(\verb|UNKNOWN|), and known divergence (\verb|LOOP|) cut off type
+checking.  This leaves the case where we are binding an \verb|EType A|
+of the form \verb|DATA b t|.  This is when type checking has
+determined that a term has \verb|Data| type \verb|t|, with boolean
+\verb|b| indicating possibility of divergence.  In this case, we send
+\verb|t| to the functional argument of bind.  But we use \verb|b|
+to relax the \verb|EType| returned by \verb|f t|.  For if \verb|b| indicates
+possible divergence, that possibility should be retained.  This is
+implemented by the call \verb|b ⇓ f t|, using the function \verb|⇓| defined
+in Figure~\ref{fig:down}.  If the type to be relaxed is of the form
+\verb|DATA b' t| or \verb|FAIL b'|, then the relaxation uses \verb;b || b'; for the
+possibility of divergence.  This means that if either the current type
+or the input \verb|b| indicate that divergence is possible, then
+so does the resulting type.  Otherwise, relaxation does not affect
+the type.
+
+\begin{figure}
+\begin{verbatim}  
+_>>=e_ : ∀{A B : Set} → EType A → (A → EType B) → EType B
+DATA b t >>=e f = b ⇓ f t
+FAIL b >>=e f = FAIL b
+UNKNOWN >>=e f = UNKNOWN
+LOOP >>=e f = LOOP
+
+returne : ∀{A : Set} → A → EType A
+returne x = DATA ff x
+
+instance
+  ETypeMonad : Monad EType
+  ETypeMonad = record { return = returne ; _>>=_ = _>>=e_ }
+\end{verbatim}  
+\caption{Monadic combinators for \texttt{EType}}
+\label{fig:etypemon}
+\end{figure}
+
+\begin{figure}
+\begin{verbatim}  
+_⇓_ : ∀{A : Set} → 𝔹 → EType A → EType A
+b ⇓ DATA b' t = DATA (b || b') t
+b ⇓ FAIL b' = FAIL (b || b')
+b ⇓ t = t
+\end{verbatim}  
+\caption{Relaxing the possibility of divergence in a type}
+\label{fig:down}
+\end{figure}
+
+\section{The Type Checker}
+
+Typing of values and results is shown in Figure~\ref{fig:tpvr}.  Integer values (\verb|I|) have type \verb|INT|,
+and boolean values (\verb|B|) \verb|BOOL|.  This is computed by \verb|tval|.  \verb|RType|s are computed for
+\verb|Result Val|s by \verb|tresult|, in the obvious way: \verb|Fail| has type \verb|FAIL|, and \verb|Unfinished|
+\verb|UNFINISHED|.  \verb|Value| results are mapped to \verb|DATA| types.  
+
+\begin{figure}
+\begin{verbatim}
+tval : Val → Data
+tval (I _) = INT
+tval (B _) = BOOL
+
+tresult : Result Val → RType
+tresult (Value v) = DATA (tval v)
+tresult Fail = FAIL 
+tresult Unfinished = UNFINISHED
+\end{verbatim}
+\caption{Typing of results and values}
+\label{fig:tpvr}
+\end{figure}
+
+The type checker \verb|texp| for expressions follows the structure
+proposed by Garby et al.: there is a helper function for each form of
+expression.  Here, since our type checker is monadic, the helper
+functions are called with \verb|Data| types (i.e., values of type
+\verb|Data|, from Figure~\ref{fig:syntp}), and produce \verb|Data|
+types in the \verb|EType| monad.  For \verb|Add| and \verb|IsZero|
+expressions, the helper functions are straightforward:
+
+\begin{verbatim}
+add' : Data → Data → EType Data
+add' INT INT = return INT
+add' _ _ = FAIL ff
+
+isZero' : Data → EType Data
+isZero' INT = return BOOL
+isZero' _ = FAIL ff
+\end{verbatim}
+
+For conditionals (\verb|Cond|), the helper function needs to combine
+the \verb|ETypes| obtained for the then- and else-parts.  We follow
+Garby et al. in using the order-theoretic perspective, and defining
+
+\begin{verbatim}
+cond' : Data → EType Data → EType Data → EType Data
+cond' BOOL t1 t2 = t1 ⊓ t2 
+cond' _ _ _ = FAIL ff
+\end{verbatim}
+
+\noindent Here, \verb|t1 ⊓ t2| is the greatest lower bound of the \verb|ETypes|
+\verb|t1| and \verb|t2|, in the partial order discussed next.
+
+\subsection{An Ordering on Static Types}
+
+Figure~\ref{fig:po} shows the partial order on \verb|ETypes|, from
+which \verb|⊓| is derived.  At the bottom of the order we have
+\verb|UNKNOWN|, and as we proceed upwards, we gain certainty.  The
+types \verb|DATA tt INT|, \verb|DATA tt BOOL|, and \verb|FAIL tt| are
+one level above \verb|UNKNOWN|.  The boolean \verb|tt| represents the
+possibility of divergence.  So the type \verb|DATA tt INT| is for
+terms which either diverge or else produce an integer value.  And the
+type \verb|FAIL tt| is for terms which either diverge or exhibit a
+runtime error, like trying to add an integer to a boolean.  These
+types express less certainty than the similar types one level higher
+with boolean \verb|ff|.  For example, \verb|DATA ff INT| is for terms
+which are guaranteed to terminate with an integer value.  There is no
+uncertainty about termination.  Finally, the type \verb|LOOP| is for
+terms guaranteed to diverge.  This again reflects greater certitude
+than the types like \verb|DATA tt INT|.
+
+
+\begin{figure}
+\begin{tikzpicture}
+  \path (1,1) node(a){DATA tt INT};
+  \path (4,1) node(b){DATA tt BOOL};
+  \path (7,1) node(c){FAIL tt};
+  \path (1,3) node(aa){DATA ff INT};
+  \path (4,3) node(bb){DATA ff BOOL};
+  \path (9,3) node(cc){FAIL ff};
+  \path (4,-1) node(u){UNKNOWN};
+  \path (7,3) node(l){LOOP};
+
+  \draw[arrows = {-Stealth[length=5pt]}] (a.north) -- (aa.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (b.north) -- (bb.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (c.north) -- (cc.south);    
+  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (a.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (b.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (c.south);    
+  \draw[arrows = {-Stealth[length=5pt]}] (a.north) -- (l.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (b.north) -- (l.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (c.north) -- (l.south);    
+  
+\end{tikzpicture}    
+\caption{The partial order on types}
+\label{fig:po}
+\end{figure}
+
+This ordering is implemented in the code for \verb|⊓|, shown in
+Figure~\ref{fig:glb}.  The last two equations use the $\Downarrow$
+function of Figure~\ref{fig:down} to relax the possibility of
+divergence in a type.  For example, suppose we are combining
+\verb|LOOP| with, say, \verb|FAIL ff|.  For conditionals, this would
+represent having a then-part, say, which is known to diverge, and an
+else-part which is known to fail.  Since we do not know statically
+which branch will be taken, the best we can do for the type of the
+whole conditional is \verb|FAIL tt|, representing the fact that the
+term either diverges or else exhibits a runtime error.  This is what
+will be produced by the call \verb|tt ⇓ (FAIL ff)|, and is indeed the
+greatest lower bound of those types, in the ordering of
+Figure~\ref{fig:po}.
+
+\begin{figure}
+\begin{verbatim}
+_⊓_ : EType Data → EType Data → EType Data
+t ⊓ UNKNOWN = UNKNOWN
+UNKNOWN ⊓ t = UNKNOWN
+DATA b c ⊓ DATA b' c' = if c =c c' then DATA (b || b') c else UNKNOWN
+DATA _ _ ⊓ FAIL _ = UNKNOWN
+FAIL _ ⊓ DATA _ _ = UNKNOWN
+FAIL b ⊓ FAIL b' = FAIL (b || b')
+t ⊓ LOOP = tt ⇓ t
+LOOP ⊓ t = tt ⇓ t
+\end{verbatim}
+\caption{The greatest lower bound of \texttt{EType}s, with respect to the ordering depicted in Figure~\ref{fig:po}}
+\label{fig:glb}
+\end{figure}
+
+\subsection{Positivity analysis}
+
+The final helper function needed for the type checker \verb|texp| is
+for \verb|Search| expressions.  We use this as an opportunity to
+consider static detection of divergence, where the type checker
+returns type \verb|LOOP|.  This is done here with a simple positivity
+analysis for expressions (much like one that forms an initial example
+in~\citet{garby+25}).  This analysis will be sound but on purpose, not
+complete for solvability of integer expressions.  Small extensions of
+the language (for example, including multiplication and multiple
+variables) would make that problem undecidable, so it is in fact more
+illustrative of the general situation to adopt a sound but incomplete
+analysis.  If the linear integer polynomial is strictly positive,
+then it has no solution.  So we test for this property.
+
+We follow the pattern established already above.  We take a monadic
+definition for sign, to account for the approximate nature of the
+analysis.  This is shown in Figure~\ref{fig:sign}.  Signs are either
+\verb|Known|, containing a boolean indicating either strictly positive
+(\verb|tt|) or nonnegative (\verb|ff|), or else \verb|Unknown|.  We
+make \verb|Sign| a monad by having \verb|Unknown| cut off the
+computation.  Figure~\ref{fig:sexp} then gives the code for computing
+signs for values, results, and expressions.  The code for \verb|sval|
+matches on the form of integers in the library we are using.  They are
+either \verb|mkℤ zero triv| for zero, \verb|mkℤ (suc n) tt| for a
+strictly positive number, or \verb|mkℤ (suc n) ff| for a strictly
+negative one.  We label the latter as \verb|Unknown|, because we
+are deliberately keeping the analysis simple and approximate.
+
+The code for \verb|sexp| returns \verb|Unknown| unless the expression
+uses only \verb|Var|, \verb|Value|, and \verb|Add|.  We use the
+monadic structure of \verb|Sign| to avoid explicity considering
+\verb|Unknown| in the \verb|Add| case of \verb|sexp|.  There, if
+either expression has sign \verb|tt| indicating strict positivity,
+then so does the \verb|Add| expression.
+
+\begin{figure}
+\begin{verbatim}
+data Sign (A : Set) : Set where
+  Known : A → Sign A
+  Unknown : Sign A
+
+Pos : Sign 𝔹
+Pos = Known tt
+
+Nonneg : Sign 𝔹
+Nonneg = Known ff
+
+returns : ∀{A : Set} → A → Sign A
+returns = Known
+
+_>>=s_ : ∀{A B : Set} → Sign A → (A → Sign B) → Sign B
+Known x >>=s f = f x
+Unknown >>=s f = Unknown
+
+instance
+  SignMonad : Monad Sign 
+  SignMonad = record { return = returns ; _>>=_ = _>>=s_ }
+\end{verbatim}
+\caption{A monadic definition of signs}
+\label{fig:sign}
+\end{figure}
+ 
+\begin{figure}
+\begin{verbatim}
+sval : Val → Sign 𝔹
+sval (I (mkℤ zero triv)) = Nonneg
+sval (I (mkℤ (suc n) tt)) = Pos
+sval (I (mkℤ (suc n) ff)) = Unknown
+sval (B x) = Unknown
+
+sresult : Result Val → Sign 𝔹
+sresult (Value v) = sval v
+sresult Fail = Unknown
+sresult Loop = Unknown
+
+sexp : Expr → Sign 𝔹
+sexp Var = Nonneg
+sexp (Value x) = sval x
+sexp (Add e e') =
+  do
+    s ← sexp e
+    s' ← sexp e'
+    return (s || s')
+sexp _ = Unknown
+\end{verbatim}
+\caption{Signs of values (\texttt{Val}), results (\texttt{Result Val}), and expressions (\texttt{Expr})}
+\label{fig:sexp}
+\end{figure}
+
+\subsection{Helper Function for \texttt{Search}}
+
+Using the type of signs from the previous section, Figure~\ref{fig:search}
+gives the helper function for type-checking an expression of the form \verb|Search e|,
+when \verb|e| has the given \verb|Data| type.  The first defining equation for \verb|search'|
+says that it returns \verb|LOOP| if \verb|e| has type \verb|INT| and the sign is strictly
+positive.  If the sign is anything else (second defining equation), the type is \verb|DATA tt INT|,
+indicating that evaluation of \verb|Search e| will either diverge of produce an integer.  If
+the type for \verb|e| is \verb|BOOL|, then the type is \verb|FAIL ff|, indicating that evaluation
+of \verb|Search e| will definitely fail, because \verb|e| will evaluate to a boolean.  Of course,
+this is just the helper function for \verb|Search e|.  It could happen that the \verb|EType| computed for \verb|e|
+indicates possible or certain divergence, failure, or unknown behavior.  The monad takes care of all
+those cases, in the code for \verb|texp|, which is shown next.
+
+\begin{figure}
+\begin{verbatim}
+search' : Data → Sign 𝔹 → EType Data
+search' INT (Known tt) = LOOP
+search' INT _ = DATA tt INT
+search' _ _ = FAIL ff
+\end{verbatim}
+\caption{Helper function for type-checking \texttt{Search} expressions}
+\label{fig:search}
+\end{figure}
+
+\subsection{The Definition of the Type Checker}
+
+Using the helper functions presented above, the code for the type
+checker \verb|texp| is shown in Figure~\ref{fig:texp}.  We use the
+monadic structure of \verb|EType| throughout, to abstract away
+handling the various modes of typing, namely failure, certain
+divergence, and possible divergence.  The case for \verb|Search|
+expressions calls \verb|sexp| (Section~\ref{sec:sign}) to get the sign
+of the expression \verb|e|, and then passes this to the helper
+function \verb|search'|.  The monadic approach results in clean,
+simple code, while still using helper functions as advocated by Garby
+et al.  An even bigger payoff of the monadic approach will appear in
+the next section, where we prove their soundness property, for this
+richer setting.
+
+
+\begin{figure}
+\begin{verbatim}
+texp : Expr → EType Data
+texp Var = return INT
+texp (Value v) = return (tval v)
+texp (Add e1 e2) = 
+ do
+   t1 ← texp e1
+   t2 ← texp e2
+   add' t1 t2
+texp (IsZero e) =
+ do
+   t ← texp e
+   isZero' t
+texp (Cond e1 e2 e3) =
+ do
+   t1 ← texp e1
+   cond' t1 (texp e2) (texp e3)
+texp (Search e) =
+ do
+   t ← texp e
+   search' t (sexp e)
+\end{verbatim}
+\caption{The type checker \texttt{texp}}
+\label{fig:texp}
+\end{figure}
+
+\section{Relating Typing and Evaluation}
+\label{sec:snd}
+
+In this section, we prove the specification proposed by Garby et al., that
+the static type of an expression approximates the type of its runtime value.  We
+formulate this soundness property as:
+
+\begin{verbatim}
+texp e ≪ tresult (eval g e v)
+\end{verbatim}
+
+\noindent where all the functions mentioned have been defined above,
+and \verb|≪| is the relation between \verb|EType|s and \verb|RType|s
+defined in Figure~\ref{fig:ll}.  Let us consider the various clauses
+of the definition.  \verb|≪Unknown| says that the static type
+\verb|UNKNOWN| approximates any runtime type \verb|T|.  This clause
+expresses the same idea that Garby et al. proposed, as shown in the
+definition of $\le$ in Figure~\ref{fig:orig}.  It allows the type
+checker to signal uncertainty, whenever desired.  The clause
+\verb|≪Data| says that if the static type is \verb|DATA b T|, then the
+runtime type may be \verb|DATA T|.  The critical point here is that
+the static type can indicate (via boolean \verb|b|) that a term might
+diverge, and it is still acceptable if the runtime type indicates that
+it actually did converge to a value of type \verb|T|.  A similar idea
+is expressed in the clause \verb|≪Fail| for the \verb|FAIL| type.  The
+clause \verb|≪Unfinished| expresses that any static type is acceptable
+for a computation that has not yet finished.  This might seem
+counterintuitive, because some static types indicate convergence.  In
+fact, with our expression language, it cannot happen that a term is
+statically judged to be terminating, but for some smaller values of
+the fuel parameter to the interpreter evaluation produces
+\verb|Unfinished|.  But the specification allows that, and it could
+occur, if the type checker reported solvability of polynomials, not
+just unsolvability.  So with our language, the only case where
+\verb|≪Unfinished| can arise is when \verb|T| is \verb|LOOP|.  This
+is, of course, a critical case, because it expresses the desired
+soundness property when the type checker reports \verb|LOOP|: the
+evaluator must always return \verb|Unfinished| in that situation,
+to satisfy the specification.
+
+\begin{figure}
+\begin{verbatim}  
+data _≪_ : EType Data → RType → Set where
+  ≪Unknown : ∀ {T} → UNKNOWN ≪ T
+  ≪Data : ∀{T}{b} → DATA b T ≪ DATA T
+  ≪Fail : ∀{b} → FAIL b ≪ FAIL
+  ≪Unfinished : ∀{T} → T ≪ UNFINISHED
+\end{verbatim}  
+\caption{The relation we prove between static and runtime types}
+\label{fig:ll}
+\end{figure}  
+
+Several lemmas about the relation on types are listed in Figure~\ref{fig:lllem}.
+The first says that relaxing the possibility of divergence in a static type
+preserves the relation.  The next two express the basic order-theoretic
+property that $\sqcap$ computes a lower bound.  These properties are also
+used by Garby et al. for their relation.
+
+\begin{figure}
+\begin{verbatim}  
+⇓mono : ∀{e : EType Data}{r : RType}{b : 𝔹} →
+        e ≪ r →
+        (b ⇓ e) ≪ r
+⊓lb1 : ∀{a b : EType Data}{a' b' : RType} →
+      a ≪ a' →
+      b ≪ b' →
+      a ⊓ b ≪ a'
+⊓lb2 : ∀{a b : EType Data}{a' b' : RType} →
+      a ≪ a' →
+      b ≪ b' →
+      a ⊓ b ≪ b'
+\end{verbatim}  
+\caption{Several lemmas about the relation between static and runtime types}
+\label{fig:lllem}
+\end{figure}  
+
+\subsection{Monadic Structure of the Relation}
+
+The relation $\ll$ of Figure~\ref{fig:ll} exhibits a monadic structure, which we use below
+to abstract boilerplate from the proof of soundness.  The combinators corresponding
+to monadic return and bind are shown in Figure~\ref{fig:llmon}.  The first, \verb|return≪|,
+relates the values produced by the return combinators of the \verb|EType| and \verb|Result|
+monads.  The second is more complex.  It aims to relate two binds:
+\begin{enumerate}
+\item \verb|a >>=e f| in the \verb|EType| monad, and
+\item \verb|a' >>=r f'| in the \verb|Result| monad.
+\end{enumerate}
+
+\noindent These can be related if first, \verb|a ≪ tresult a'|.  Second,
+we have a complex condition with a number of hypotheses:
+
+\begin{itemize}
+\item \verb|v : Val|
+\item \verb|b : 𝔹|
+\item \verb|a ≡ DATA b (tval v)|
+\item \verb|a' ≡ Value v|
+\item \verb|DATA b (tval v) ≪ DATA (tval v)|
+\end{itemize}  
+
+\noindent Providing all these, the monadic combinator then requires
+
+\begin{itemize}
+\item \verb|f (tval v) ≪ tresult (f' v)|
+  \end{itemize}
+
+\noindent The essence of this requirement (by the combinator, of its
+caller) is to show that \verb|f| and \verb|f'| together preserve the
+relation, for all \verb|v : Val|.  The extra premises are provided by
+the combinator to its caller, to make this easier to show.  Providing
+proofs that the terms \verb|a| and \verb|a'| referenced in the type of
+the first argument to the combinator are equal to these specific
+values (\verb|DATA b (tval v)| and \verb|Value v|) are justified by
+the situation in which this second argument to the combinator will be
+invoked; and also turn out to be quite helpful in using the
+combinator.  The premise stating that these values are related by
+$\ll$ is provided by the combinator just as a convenience in the
+proof; it follows from the other premises and the requirement that
+\verb|a ≪ tresult a'|.  Note that we cannot declare that this monadic
+structure is an instance of \verb|Monad|, because the interfaces are
+different: monads are not dependently typed, but these combinators
+are.  So we cannot use \verb|do|-notation with these, but as we will
+see next, we can still apply them directly with good effect.
+
+\begin{figure}
+\begin{verbatim}  
+return≪ : ∀{v : Val} →
+          returne (tval v) ≪ tresult (returnr v)
+return≪{v} = ≪Data
+
+_>>=≪_ : ∀{a : EType Data}{a' : Result Val} →
+        {f : Data → EType Data}{f' : Val → Result Val} → 
+         a ≪ tresult a' →
+         (∀{v : Val}{b : 𝔹}
+           {q : a ≡ DATA b (tval v)}
+           {q' : a' ≡ Value v}
+           {q'' : DATA b (tval v) ≪ DATA (tval v)} → 
+           f (tval v) ≪ tresult (f' v)) → 
+        (a >>=e f) ≪ tresult (a' >>=r f')
+\end{verbatim}  
+\caption{Monadic structure of $\ll$}
+\label{fig:llmon}
+\end{figure}  
+
+\subsection{The Proof of Soundness: Base Cases}
+
+We turn now to the proof of
+\begin{verbatim}
+texp-soundness : ∀{e : Expr}{g v : ℕ} →
+                 texp e ≪ tresult (eval g e v)
+\end{verbatim}
+\noindent Let us start with the base cases:
+\begin{verbatim}
+texp-soundness {Value x} {g} {v} = return≪
+texp-soundness {Var} {g} {v} = return≪{v = I (toℤ v)}
+\end{verbatim}
+\noindent They may both be proved using the \verb|return| of the monadic proof combinator.
+In the \verb|Var| case, Agda cannot infer the value for implicit argument \verb|v|,
+because in that case, the goal is
+\begin{verbatim}
+texp Var ≪ tresult (eval g Var v).
+\end{verbatim}
+\noindent which simplifies to just
+\begin{verbatim}
+DATA ff INT ≪ DATA INT
+\end{verbatim}
+\noindent So we supply the argument \verb|I (toℤ v)| explicitly to
+\verb|return≪|.  We could also just use \verb|≪Data| (which is what
+\verb|return≪| returns) for the \verb|Var| case.  Using \verb|return≪|
+just helps illustrate the monadic nature of the proof.
+
+\subsection{The Proof of Soundness: Arithmetic Cases}
+
+Next, let us consider the case for \verb|IsZero|.  We must prove
+\begin{verbatim}
+texp (IsZero e) ≪ tresult (eval g (IsZero e) v)
+\end{verbatim}
+\noindent Unfolding the definitions of the type checker (\verb|texp|) and evaluator (\verb|eval|), this goal becomes
+
+\begin{verbatim}
+texp e >>=e isZero' ≪ tresult (eval g e v >>=r isZero)
+\end{verbatim}
+
+\noindent Delightfully, this matches the conclusion of our monadic proof combinator \verb|>>=≪|, which
+is 
+\begin{verbatim}
+(a >>=e f) ≪ tresult (a' >>=r f')
+\end{verbatim}
+\noindent Even better, Agda can deduce that in order to apply that combinator, \verb|a| must be instantiated to
+\verb|texp e|, \verb|f| to \verb|isZero'|, \verb|a'| to \verb|eval g e v|, and \verb|f'| to \verb|isZero|.
+From the type of the combinator, this means we have two subgoals to prove, where the first is
+\begin{verbatim}
+texp e ≪ tresult (eval g e v)
+\end{verbatim}
+\noindent But this is just what the induction hypothesis (i.e., under
+Curry-Howard, a recursive call to \verb|texp-soundness| produces for
+\verb|e|).  So we need only prove the second premise of the
+combinator.  The proof in Figure~\ref{fig:caseiszero} is sufficient;
+it simply does not make use of the extra premises that the combinator
+provides (about the identity of \verb|a|, etc.).  They are not needed
+here.  The two cases of the proof, for the two constructors of
+\verb|Val|, are easily proved from the defining clauses for $\ll$.
+Those cases are:
+\begin{enumerate}
+\item \verb|isZero' (tval (I x)) ≪ tresult (isZero (I x))|
+\item \verb|isZero' (tval (B x)) ≪ tresult (isZero (B x))|
+\end{enumerate}
+\noindent From the definitions of \verb|izZero'| and \verb|isZero|,
+these simplify to 
+\begin{enumerate}
+\item \verb|DATA ff BOOL ≪ DATA BOOL|, because the static and runtime types of \verb|IsZero| expressions applied to integer values are both (forms of) the boolean type; and 
+\item \verb|FAIL ff ≪ FAIL|, because \verb|IsZero| fails if applied to booleans.
+\end{enumerate}
+\noindent Notice that the monadic proof combinator has taken care of
+all the error cases, and of propagating the possibility of divergence.
+So here, it suffices to reason as if the subexpression \verb|e| is
+terminating.
+
+\begin{figure}
+\begin{verbatim}
+case-isZero : ∀{v : Val} →
+              isZero' (tval v) ≪ tresult (isZero v)
+case-isZero {I x} = ≪Data
+case-isZero {B x} = ≪Fail
+\end{verbatim}
+\caption{Lemma for the \texttt{IsZero} case}
+\label{fig:caseiszero}
+\end{figure}
+
+Using the monadic proof combinator and this three-line lemma \verb|case-isZero|, the case of \verb|texp-soundness| for \verb|IsZero|
+is very easy:
+\begin{verbatim}
+texp-soundness {IsZero e} {g} {v} = 
+  texp-soundness{e}{g}{v} >>=≪
+  case-isZero  
+\end{verbatim}
+\noindent We just use the induction hypothesis (i.e., make a recursive
+call) for \verb|e|, and bind the result to \verb|case-iszero| using
+the proof combinator.
+
+
+The case for \verb|Add| expressions works just as nicely.  We have this easily proven lemma,
+where we relate data in the case of two integer values, and failures in all others:
+\begin{verbatim}
+case-add : ∀{v1 v2 : Val} →
+           add' (tval v1) (tval v2) ≪ tresult (add v1 v2)
+case-add {I _} {I _} = ≪Data
+case-add {I _} {B _} = ≪Fail
+case-add {B _} {I _} = ≪Fail
+case-add {B _} {B _} = ≪Fail
+\end{verbatim}
+\noindent And the clause for \verb|texp-soundness| is again very simple, using the combinator:
+\begin{verbatim}
+texp-soundness {Add e1 e2} {g} {v} = 
+  texp-soundness{e1}{g}{v} >>=≪
+  texp-soundness{e2}{g}{v} >>=≪
+  case-add
+\end{verbatim}
+
+\subsection{The Proof of Soundness: Conditionals}
+
+Because evaluation of conditionals is lazy in the then- and else-parts, both the type checker and the evaluator
+as we saw them above were structured somewhat differently.  The proof follows that structure.  The case
+of \verb|texp-soundness| is:
+\begin{verbatim}
+texp-soundness {Cond e1 e2 e3} {g} {v} = 
+  texp-soundness{e1}{g}{v} >>=≪ λ{v1} → 
+  case-cond{v1} (texp-soundness{e2}{g}{v}) (texp-soundness{e3}{g}{v})
+\end{verbatim}
+\noindent We again use the proof-level bind \verb|>>=≪| with a
+recursive call to \verb|texp-soundness| for the if-part of the
+conditional.  The helper function then accepts the results of the
+recursive calls for the then- and else-parts.  Agda has trouble
+inferring some of the implicit arguments, so we handle them explicitly
+using \verb|{v1}|.  Figure~\ref{fig:casecond} shows the definition of
+the helper lemma \verb|case-cond|.  We pattern match on the value
+\verb|v1| for the if-part, accepting proofs \verb|d1| and \verb|d2| of
+the soundness property for the then- and else-parts of the
+conditional.  If \verb|v1| is an integer value, then the goal
+simplifies to 
+\begin{verbatim}
+FAIL ff ≪ FAIL
+\end{verbatim}
+\noindent This is proved by \verb|≪Fail|.  The other two cases are
+for when \verb|v1| is \verb|B tt| or \verb|B ff|.  In those cases,
+the goals simplify to
+\begin{itemize}
+\item \verb|t2 ⊓ t3 ≪ tresult r2|
+\item \verb|t2 ⊓ t3 ≪ tresult r3|
+\end{itemize}
+\noindent We see here the \verb|⊓| operator, used in the definition of \verb|cond'| (the helper function used by 
+the type checker \verb|texp|, for conditionals).  These goals are instances of the ordering properties \verb|⊓lb1|
+and \verb|⊓lb2|, stated in Figure~\ref{fig:lllem} above.  So we prove those cases (in Figure~\ref{fig:casecond}) just using those lemmas.
+
+\begin{figure}
+\begin{verbatim}
+case-cond : ∀{v1 : Val}{r2 r3 : Result Val}{t2 t3 : EType Data} →
+            t2 ≪ tresult r2 →
+            t3 ≪ tresult r3 →             
+            cond' (tval v1) t2 t3 ≪ tresult (cond v1 r2 r3)
+case-cond {I x} {r2} {r3} {t2} {t3} d1 d2 = ≪Fail
+case-cond {B tt} {r2} {r3} {t2} {t3} d1 d2 = ⊓lb1 d1 d2
+case-cond {B ff} {r2} {r3} {t2} {t3} d1 d2 = ⊓lb2 d1 d2
+\end{verbatim}
+\caption{Helper lemma for conditionals}
+\label{fig:casecond}
+\end{figure}
+
+\subsection{Interlude: Soundness of the Positivity Analysis}
+
+Before we see the proof of soundness for \verb|Search| expressions,
+we need to consider soundness of the positivity analysis \verb|sexp|.
+This is formulated again in the style of~\citet{garby+25}:
+\begin{verbatim}
+sexp-soundness : ∀{e : Expr}{g v : ℕ} →
+                 sexp e ≪sign sresult (eval g e v)
+\end{verbatim}
+\noindent Here, the partial order is as shown in
+Figure~\ref{fig:signll}, and it follows the same basic idea as the
+ordering for types (of Figure~\ref{fig:ll}): lower in the ordering
+corresponds to greater uncertainty.  The \verb|Unknown| type is a
+minimal element, and \verb|Nonneg| is less than \verb|Pos| (as it
+reflects the additional uncertainty of whether a term might evaluate
+to zero or else be strictly positive).  The proof of
+\verb|sexp-soundness| is simpler than the proof of soundness for
+\verb|texp|, which we are in the middle of presenting.  For \verb|Add|
+expressions, it uses a similar proof-level monadic bind operator,
+shown in Figure~\ref{fig:bindllsign}.  As for typing, this operator is
+for relating two monadic results:
+\begin{verbatim}
+(a >>=s f) ≪sign sresult (a' >>=r f')
+\end{verbatim}
+\noindent Also as for typing, it requires proofs of the relation, for the components of these
+monadic results:
+\begin{itemize}
+\item \verb|a ≪sign sresult a'|
+\item \verb|∀{b : 𝔹}{v : Val} → Known b ≪sign sval v → f b ≪sign sresult (f' v)|
+\end{itemize}
+\noindent The second condition states that if the sign of \verb|v| is known to be \verb|b|, then the
+relation should hold of \verb|f b| and \verb|f' v|.  Using this combinator results in a very
+simple case of \verb|sexp-soundness| for \verb|Add| expressions.
+
+
+\begin{figure}
+\begin{verbatim}  
+data _≪sign_ : Sign 𝔹 → Sign 𝔹 → Set where
+  ≪Unknown : ∀ {s} → Unknown ≪sign s
+  ≪Refl : ∀{s} → s ≪sign s
+  ≪Nonneg : Nonneg ≪sign Pos
+\end{verbatim}  
+\caption{The ordering on signs}
+\label{fig:signll}
+\end{figure}
+
+
+\begin{figure}
+\begin{verbatim}
+_>>=≪sign_ : ∀{a : Sign 𝔹}{a' : Result Val} →
+        {f : 𝔹 → Sign 𝔹}{f' : Val → Result Val} → 
+         a ≪sign sresult a' →
+         (∀{b : 𝔹}{v : Val}{q : a ≡ Known b}{q' : a' ≡ Value v} →
+           Known b ≪sign sval v → 
+           f b ≪sign sresult (f' v)) → 
+        (a >>=s f) ≪sign sresult (a' >>=r f')
+\end{verbatim}
+\caption{Proof-level monadic bind, for proving soundness of \texttt{sexp}}
+\label{fig:bindllsign}
+\end{figure}
+
+
+\subsection{The Proof of Soundness: Search}
+
+Returning now to the proof of \verb|texp-soundness|, we have the last
+case, namely for \verb|Search| expressions.  This is the most
+involved, because both the type checker and evaluator are most
+complicated for these expressions.  The type checker uses the
+approximated positivity analysis \verb|sexp|.  The evaluator loops
+through values for the variable, searching for zero, using mutually
+recursive helper functions \verb|search| and \verb|searchh|.  Recall
+that these functions use an input \verb|vv : ℕ → Result Val|, to avoid
+having any direct dependence on expressions for the helper function.
+We have (from Figure~\ref{fig:search})
+\begin{itemize}
+\item \verb|search g vv| searches for a value less than or equal to \verb|g| where
+  \verb|vv| successfully returns zero.
+\item \verb|searchh g vv u| checks if \verb|u| is zero, returning integer value \verb|g|, and continuing the search
+  otherwise, if enough gas remains.
+\end{itemize}
+\noindent Not surprisingly, the proof needs mutually recursive lemmas to match this
+structure.  These are stated in Figure~\ref{fig:lemsearch}
+
+
+
+\begin{figure}
+\begin{verbatim}
+mutual
+ case-search : ∀ {s : Sign 𝔹}{vv : ℕ → Result Val}{g : ℕ} →
+               (∀{n : ℕ} → DATA tt INT ≪ tresult (vv n)) → 
+               (∀{n : ℕ} → s ≪sign sresult (vv n)) →
+               search' INT s ≪ tresult (search g vv)
+ case-searchh : ∀ {u : Val}{s : Sign 𝔹}{vv : ℕ → Result Val}{g : ℕ}{b : 𝔹} →
+               (∀{n : ℕ} → DATA b (tval u) ≪ tresult (vv n)) → 
+               (∀{n : ℕ} → s ≪sign sresult (vv n)) →
+               s ≪sign sval u → 
+               search' (tval u) s ≪ tresult (searchh g vv u)
+\end{verbatim}
+\caption{Helper lemmas about \texttt{searchh} and \texttt{search}}
+\label{fig:lemsearch}
+\end{figure}
+
+These lemmas require some additional hypotheses about
+\verb|vv : ℕ → Result Val|.  First, with
+\verb|s| the sign of the original expression \verb|e| (where \verb|e|
+is not presented to these lemmas), both lemmas need the assumption
+\begin{verbatim}
+∀{n : ℕ} → s ≪sign sresult (vv n)
+\end{verbatim}
+\noindent This says the sign of the calls to \verb|vv| is approximated
+by \verb|s|.  Where we invoke \verb|case-search| in the proof of
+\verb|texp-soundness|, we will instantiate \verb|s| with \verb|sexp e|
+and \verb|vv| with \verb|eval g e|.  So the required property about
+the sign of \verb|vv| becomes
+\begin{verbatim}
+∀{n : ℕ} → sexp e ≪sign sresult (eval g e n)
+\end{verbatim}
+\noindent And this is exactly the conclusion of \verb|sexp-soundness|, which
+we saw in the previous section.
+
+The second requirement of \verb|case-search| is that
+\begin{verbatim}
+∀{n : ℕ} → DATA tt INT ≪ tresult (vv n)
+\end{verbatim}
+\noindent This says that \verb|vv| only produces values of data type \verb|INT|.
+A similar requirement is imposed by \verb|case-searchh|.  These properties
+are proved, in the body of \verb|texp-soundness|, by the induction
+hypothesis, which applies to any value \verb|n| for the sole variable.
+The proof of \verb|case-search| uses the proof-level bind, although Agda
+needs more help in inferring the implicit arguments.  So the code does
+not look as nice.  Still, the combinator abstracts the reasoning about
+failure cases, and thus keeps the proofs shorter.
+
+To conclude, the complete proof of soundness is listed in
+Figure~\ref{fig:texpsnd}, omitting only local definitions of \verb|h|
+and \verb|h'| in the final case.  These do some local rewriting with
+the results of \verb|texp-soundness| and \verb|sexp-soundness|, which
+is needed because Agda does not support rewriting inline, but only as
+part of pattern matching.
+
+\begin{figure}
+\begin{verbatim}
+texp-soundness : ∀{e : Expr}{g v : ℕ} →
+                 texp e ≪ tresult (eval g e v)
+texp-soundness {Value x} {g} {v} = return≪
+texp-soundness {Var} {g} {v} = return≪{v = I (toℤ v)}
+texp-soundness {Add e1 e2} {g} {v} = 
+  texp-soundness{e1}{g}{v} >>=≪
+  texp-soundness{e2}{g}{v} >>=≪
+  case-add
+texp-soundness {IsZero e} {g} {v} = 
+  texp-soundness{e}{g}{v} >>=≪
+  case-isZero  
+texp-soundness {Cond e1 e2 e3} {g} {v} = 
+  texp-soundness{e1}{g}{v} >>=≪ λ{v1} → 
+  case-cond{v1}
+    (texp-soundness{e2}{g}{v})
+    (texp-soundness{e3}{g}{v})
+texp-soundness {Search e} {g} {v} =  
+  texp-soundness{e}{g}{g} >>=≪
+   λ{u}{b}{q}{q'} → 
+   case-searchh{u}{b = b}
+      (λ{n} → h {u} q)
+      (sexp-soundness{e})
+      (h' q')
+\end{verbatim}
+\caption{Proof of soundness of the type checker with respect to the evaluator}
+\label{fig:texpsnd}
+\end{figure}
+
+\section{Related Work}
+
+\section{Conclusion and Future Work}
+
+We have seen how to extend the inspiring approach of~\citet{garby+25}
+to distinguish between errors and uncertainty.  The kinds of errors we
+consider are divergence and finite failure.  We extend their example
+expression language with a form of unbounded search, for which we use
+a simple sound -- but intentionally incomplete -- divergence analysis.
+The approach depends on a more complex partial ordering of types,
+where total uncertainty (type \verb|UNKNOWN|) is minimal, and
+progression in the ordering corresponds to increasing certainty.  We
+used monads to manage the several different kinds of errors, both in
+typing and evaluation.  To prove Garby et al.'s relational
+specification -- that the static type approximates the runtime type of
+the result of the interpreter -- we use a proof-level binary indexed
+monad.  This factors out all the reasoning about errors, and results
+in a concise and manageable proof of soundness, both for typing and
+the positivity analysis (for divergence).  Using the standard
+technique of a fuel-based interpreter, we are able to perform this
+relational reasoning about possibly diverging evaluation.
+
+Probably the most pressing avenue for future work is to extend the
+approach of Garby et al. to higher-order functions.  Here, it seems
+likely that the idea of relating static types of expressions with
+runtime types of results of evaluation will break down.  This is
+because in the presence of higher-order functions, computing the
+runtime type for a functional value will no longer be simple or even,
+for many type systems of interest, decidable.  Even if results are
+restricted to be first-order, the soundness property will have to be
+extended to higher order, to reason about intermediate steps of
+computation.  For this, instead of relating static and runtime types,
+one might be better off relating static types and results of
+evaluation directly.  This might take the approach closer to usual
+semantic approaches in Programming Languages, like step-indexed
+logical relations~\cite{ahmed06}.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{paper.bib}
 
 
 \end{document}
-% \endinput
-%%
-%% End of file `sample-acmsmall-submission.tex'.
+
