@@ -109,7 +109,7 @@
   A recent paper by Garby, Bahr, and Hutton proposes a relational
   specification for type checkers, where types computed statically are
   related to the types of computational results.  The relation in
-  question makes type errors less than non-error types.  This paper
+  question makes type errors smaller than non-error types.  This paper
   refines this relation by introducing explicit types for terms which
   are guaranteed to exhibit runtime errors of various kinds.  These
   error types are distinct from a type representing uncertainty about
@@ -1009,22 +1009,12 @@ texp-soundness : ∀{e : Expr}{g v : ℕ} →
 \noindent Let us start with the base cases:
 \begin{verbatim}
 texp-soundness {Value x} {g} {v} = return≪
-texp-soundness {Var} {g} {v} = return≪{v = I (toℤ v)}
+texp-soundness {Var} {g} {v} = ≪Data
 \end{verbatim}
-\noindent They may both be proved using the \verb|return| of the monadic proof combinator.
-In the \verb|Var| case, Agda cannot infer the value for implicit argument \verb|v|,
-because in that case, the goal is
-\begin{verbatim}
-texp Var ≪ tresult (eval g Var v).
-\end{verbatim}
-\noindent which simplifies to just
-\begin{verbatim}
-DATA ff INT ≪ DATA INT
-\end{verbatim}
-\noindent So we supply the argument \verb|I (toℤ v)| explicitly to
-\verb|return≪|.  We could also just use \verb|≪Data| (which is what
-\verb|return≪| returns) for the \verb|Var| case.  Using \verb|return≪|
-just helps illustrate the monadic nature of the proof.
+\noindent They may both be proved using the \verb|return| of the
+monadic proof combinator, although we prefer \verb|≪Data| (which
+\verb|return≪| returns) for the second, because in that case, Agda
+cannot infer the value for implicit argument \verb|v|.
 
 \subsection{The Proof of Soundness: Arithmetic Cases}
 
@@ -1334,6 +1324,21 @@ texp-soundness {Search e} {g} {v} =
 \end{figure}
 
 \section{Related Work}
+
+This paper is, as extensively noted above, strongly inspired
+by~\citet{garby+25}.  For other related works: indexed monads appear
+in Hoare Type Theory and work on Dijkstra
+monads~\cite{nanevski+08,swamy+13}.  They are used for dependently
+typed programming in the presence of effects.  In contrast, this paper
+has demonstrated use of an indexed monad for concise relational
+reasoning about other monadic computations.  \citet{delaware+13} do
+relate monadic computations, in the context of modular proofs of type
+safety in the presence of effects.  They do not structure the proofs
+themselves monadically, as done here.  \citet{swierstra08} shows how
+to assemble effectful interpreters using free monads.  His work does
+not concern formalized relational reasoning about these.  There is, of
+course, a voluminous literature on proofs of type safety, too vast to
+survey here.  See~\citet{pierce02} for a starting point.
 
 \section{Conclusion and Future Work}
 
