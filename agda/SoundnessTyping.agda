@@ -166,7 +166,7 @@ mutual
 texp-soundness : ∀{e : Expr}{g v : ℕ} →
                  texp e ≪ tresult (eval g e v)
 texp-soundness {Value x} {g} {v} = return≪
-texp-soundness {Var} {g} {v} = return≪{v = I (toℤ v)}
+texp-soundness {Var} {g} {v} = ≪Data
 texp-soundness {Add e1 e2} {g} {v} = 
   texp-soundness{e1}{g}{v} >>=≪
   texp-soundness{e2}{g}{v} >>=≪
