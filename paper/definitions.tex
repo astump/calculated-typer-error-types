@@ -98,3 +98,26 @@
 %     }
 \newcommand{\shift}[2]{{\uparrow^{#1}_{#2}}}
 \newcommand{\textblue}[1]{\textcolor{blue}{#1}}
+
+
+\newcommand{\llpic}[0]{\begin{tikzpicture}
+  \path (1,1) node(a){DATA tt INT};
+  \path (4,1) node(b){DATA tt BOOL};
+  \path (7,1) node(c){FAIL tt};
+  \path (1,3) node(aa){DATA ff INT};
+  \path (4,3) node(bb){DATA ff BOOL};
+  \path (9,3) node(cc){FAIL ff};
+  \path (4,-1) node(u){UNKNOWN};
+  \path (7,3) node(l){LOOP};
+
+  \draw[arrows = {-Stealth[length=5pt]}] (a.north) -- (aa.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (b.north) -- (bb.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (c.north) -- (cc.south);    
+  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (a.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (b.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (c.south);    
+  \draw[arrows = {-Stealth[length=5pt]}] (a.north) -- (l.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (b.north) -- (l.south);
+  \draw[arrows = {-Stealth[length=5pt]}] (c.north) -- (l.south);    
+  
+\end{tikzpicture}}

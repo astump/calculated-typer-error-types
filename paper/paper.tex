@@ -214,35 +214,45 @@ In this paper, we build on the prior work of Garby et al. in the following ways:
   it is guaranteed to produce a runtime error.  \verb|UNKNOWN| represents a term whose runtime behavior
   cannot be assessed by the type checker.
   
-  \item We add a form of possibly diverging computation to the simple
-    expression language, via a form of unbounded search.  This leads
-    to richer typing: instead of just \verb|BOOL| and \verb|INT| for
-    terms producing values of those types, we now distinguish between
-    terms which are known to terminate or ones which might diverge.  So we
+  \item We add possibly diverging computation to the simple expression
+    language, via a form of unbounded search.  This leads to richer
+    typing: instead of just \verb|BOOL| and \verb|INT| for terms
+    producing values of those types, we now distinguish between terms
+    which are known to terminate or ones which might diverge.  So we
     have types \verb|BOOL b| and \verb|INT b|, where boolean \verb|b|
-    indicates whether possible divergence
-    (\verb|True|) or guaranteed termination (\verb|False|).  The
-    \verb|FAIL| type is updated similarly, to distinguish terms that
-    are guaranteed to fail at runtime, from those that fail or else diverge.
-    For computations that are \emph{guaranteed} to diverge, we
-    add a type \verb|LOOP|.
+    indicates either possible divergence (\verb|True|) or guaranteed
+    termination (\verb|False|).  The \verb|FAIL| type is updated
+    similarly, to distinguish terms that are guaranteed to fail at
+    runtime, from those that fail or else diverge.  For computations
+    that are \emph{guaranteed} to diverge, we add a type \verb|LOOP|.
+    The partial order on these types is depicted in
+    Figure~\ref{fig:po}.  More approximate types are lower in the
+    order, which is discussed further in Section~\ref{sec:po}.
     
-  \item With this more complex ordering on types, we adopt monadic definitions of the type
-    checker and the evaluator.
+  \item To manage programming with this more complex ordering on
+    types, we adopt monadic definitions of the type checker and the
+    evaluator.
 
-  \item Using these enriched definitions, we prove the specification
-    proposed by~\citet{garby+25}, in Agda.  Here, this specification
-    involves relating two monadic computations, namely the type
-    checker and the evaluator.  To do this concisely, we make use of a
-    binary indexed monad in the proof.
+  \item We then prove the specification proposed by~\citet{garby+25},
+    in Agda.  Here, we must relate the two monadic computations of
+    typing and evaluation.  To do this concisely, our proof uses a
+    binary indexed monad, to factor out the reasoning associated with
+    the cases that the typing and evaluation monads abstract.
 
     \end{enumerate}
+
+
+\begin{figure}
+\llpic
+\caption{The partial order on types in this paper}
+\label{fig:po}
+\end{figure}
 
 The motivation for this development is to enrich the kind of
 information the type checker can provide.  Usually (and
 in~\citet{garby+25}), type checkers do not distinguish between
 situations that might lead to runtime errors, and those which must.
-Such a distinction would pave the way to providing new error
+Such a distinction would pave the way for providing new error
 information to programmers, when their programs do not pass the type
 checker.  One might wish, for example, to report example inputs to a
 function which are guaranteed to lead to a runtime error.  It is
@@ -373,7 +383,7 @@ add _ _ = Fail
 \end{verbatim}
 
 \noindent Our type \verb|Val| of values does not include errors (see
-Figure~\ref{fig:syn}), so to return \verb|Fail|, the result type of
+Figure~\ref{fig:syn}), so to return \verb|Fail|, the return type of
 \verb|add| must use \verb|Result|.  The test for zero has just as
 simple a helper function:
 
@@ -491,11 +501,11 @@ Agda type \verb|Data| for types common to both runtime and static.
 Constructors \verb|DATA| (taking an argument of type \verb|Data|) and
 \verb|FAIL| are common to both datatypes.  In the static case
 (\verb|EType|), these constructors take a boolean argument indicating
-whether the terms might diverge (\verb|True|) or certainly terminate
-(\verb|False|).  For the situation where the evaluator runs out of
+whether the terms might diverge (\verb|tt|) or certainly terminate
+(\verb|ff|).  For the situation where the evaluator runs out of
 fuel and returns \verb|Unfinished|, we have runtime type
 \verb|UNFINISHED|.  Statically, we will use a simple positivity
-analysis to detect if the search for a zero cannot possibly succeed.
+analysis to detect if the search for a zero cannot possibly succeed (presented in Section~\ref{sec:pos}).
 In that case, the static type is \verb|LOOP|.  Finally, static type
 \verb|UNKNOWN| represents uncertainty, as generally inherent to type
 checking.
@@ -620,61 +630,37 @@ cond' BOOL t1 t2 = t1 ⊓ t2
 cond' _ _ _ = FAIL ff
 \end{verbatim}
 
-\noindent Here, \verb|t1 ⊓ t2| is the greatest lower bound of the \verb|ETypes|
-\verb|t1| and \verb|t2|, in the partial order discussed next.
+\noindent Here, \verb|t1 ⊓ t2| is the greatest lower bound of the
+\verb|ETypes| \verb|t1| and \verb|t2|, in the ordering on static
+types, discussed next.
 
-\subsection{An Ordering on Static Types}
+\subsection{More on the Partial Order for Static Types}
+\label{sec:po}
 
-Figure~\ref{fig:po} shows the partial order on \verb|ETypes|, from
-which \verb|⊓| is derived.  At the bottom of the order we have
-\verb|UNKNOWN|, and as we proceed upwards, we gain certainty.  The
-types \verb|DATA tt INT|, \verb|DATA tt BOOL|, and \verb|FAIL tt| are
-one level above \verb|UNKNOWN|.  The boolean \verb|tt| represents the
-possibility of divergence.  So the type \verb|DATA tt INT| is for
-terms which either diverge or else produce an integer value.  And the
-type \verb|FAIL tt| is for terms which either diverge or exhibit a
-runtime error, like trying to add an integer to a boolean.  These
-types express less certainty than the similar types one level higher
-with boolean \verb|ff|.  For example, \verb|DATA ff INT| is for terms
-which are guaranteed to terminate with an integer value.  There is no
+Consider in more detail Figure~\ref{fig:po} from the introduction.
+This shows the partial order on \verb|ETypes|, from which \verb|⊓| is
+derived.  At the bottom of the order we have \verb|UNKNOWN|, and as we
+proceed upwards, we gain certainty.  The types \verb|DATA tt INT|,
+\verb|DATA tt BOOL|, and \verb|FAIL tt| are one level above
+\verb|UNKNOWN|.  The boolean \verb|tt| represents the possibility of
+divergence.  So the type \verb|DATA tt INT| is for terms which either
+diverge or else produce an integer value.  And the type \verb|FAIL tt|
+is for terms which either diverge or exhibit a runtime error, like
+trying to add an integer to a boolean.  These types express less
+certainty than the similar types one level higher with boolean
+\verb|ff|.  For example, \verb|DATA ff INT| is for terms which are
+guaranteed to terminate with an integer value.  There is no
 uncertainty about termination.  Finally, the type \verb|LOOP| is for
 terms guaranteed to diverge.  This again reflects greater certitude
 than the types like \verb|DATA tt INT|.
-
-
-\begin{figure}
-\begin{tikzpicture}
-  \path (1,1) node(a){DATA tt INT};
-  \path (4,1) node(b){DATA tt BOOL};
-  \path (7,1) node(c){FAIL tt};
-  \path (1,3) node(aa){DATA ff INT};
-  \path (4,3) node(bb){DATA ff BOOL};
-  \path (9,3) node(cc){FAIL ff};
-  \path (4,-1) node(u){UNKNOWN};
-  \path (7,3) node(l){LOOP};
-
-  \draw[arrows = {-Stealth[length=5pt]}] (a.north) -- (aa.south);
-  \draw[arrows = {-Stealth[length=5pt]}] (b.north) -- (bb.south);
-  \draw[arrows = {-Stealth[length=5pt]}] (c.north) -- (cc.south);    
-  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (a.south);
-  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (b.south);
-  \draw[arrows = {-Stealth[length=5pt]}] (u.north) -- (c.south);    
-  \draw[arrows = {-Stealth[length=5pt]}] (a.north) -- (l.south);
-  \draw[arrows = {-Stealth[length=5pt]}] (b.north) -- (l.south);
-  \draw[arrows = {-Stealth[length=5pt]}] (c.north) -- (l.south);    
-  
-\end{tikzpicture}    
-\caption{The partial order on types}
-\label{fig:po}
-\end{figure}
 
 This ordering is implemented in the code for \verb|⊓|, shown in
 Figure~\ref{fig:glb}.  The last two equations use the $\Downarrow$
 function of Figure~\ref{fig:down} to relax the possibility of
 divergence in a type.  For example, suppose we are combining
-\verb|LOOP| with, say, \verb|FAIL ff|.  For conditionals, this would
-represent having a then-part, say, which is known to diverge, and an
-else-part which is known to fail.  Since we do not know statically
+\verb|LOOP| with, say, \verb|FAIL ff|.  For conditionals, this could
+represent having a then-part that is known to diverge, and an
+else-part that is known to fail.  Since we do not know statically
 which branch will be taken, the best we can do for the type of the
 whole conditional is \verb|FAIL tt|, representing the fact that the
 term either diverges or else exhibits a runtime error.  This is what
@@ -699,6 +685,7 @@ LOOP ⊓ t = tt ⇓ t
 \end{figure}
 
 \subsection{Positivity analysis}
+\label{sec:pos}
 
 The final helper function needed for the type checker \verb|texp| is
 for \verb|Search| expressions.  We use this as an opportunity to
@@ -714,7 +701,7 @@ analysis.  If the linear integer polynomial is strictly positive,
 then it has no solution.  So we test for this property.
 
 We follow the pattern established already above.  We take a monadic
-definition for sign, to account for the approximate nature of the
+definition for \verb|Sign|, to account for the approximate nature of the
 analysis.  This is shown in Figure~\ref{fig:sign}.  Signs are either
 \verb|Known|, containing a boolean indicating either strictly positive
 (\verb|tt|) or nonnegative (\verb|ff|), or else \verb|Unknown|.  We
@@ -790,12 +777,12 @@ sexp _ = Unknown
 
 \subsection{Helper Function for \texttt{Search}}
 
-Using the type of signs from the previous section, Figure~\ref{fig:search}
+Using the type of signs from the previous section, Figure~\ref{fig:searchp}
 gives the helper function for type-checking an expression of the form \verb|Search e|,
 when \verb|e| has the given \verb|Data| type.  The first defining equation for \verb|search'|
 says that it returns \verb|LOOP| if \verb|e| has type \verb|INT| and the sign is strictly
 positive.  If the sign is anything else (second defining equation), the type is \verb|DATA tt INT|,
-indicating that evaluation of \verb|Search e| will either diverge of produce an integer.  If
+indicating that evaluation of \verb|Search e| will either diverge or produce an integer.  If
 the type for \verb|e| is \verb|BOOL|, then the type is \verb|FAIL ff|, indicating that evaluation
 of \verb|Search e| will definitely fail, because \verb|e| will evaluate to a boolean.  Of course,
 this is just the helper function for \verb|Search e|.  It could happen that the \verb|EType| computed for \verb|e|
@@ -810,7 +797,7 @@ search' INT _ = DATA tt INT
 search' _ _ = FAIL ff
 \end{verbatim}
 \caption{Helper function for type-checking \texttt{Search} expressions}
-\label{fig:search}
+\label{fig:searchp}
 \end{figure}
 
 \subsection{The Definition of the Type Checker}
@@ -820,7 +807,7 @@ checker \verb|texp| is shown in Figure~\ref{fig:texp}.  We use the
 monadic structure of \verb|EType| throughout, to abstract away
 handling the various modes of typing, namely failure, certain
 divergence, and possible divergence.  The case for \verb|Search|
-expressions calls \verb|sexp| (Section~\ref{sec:sign}) to get the sign
+expressions calls \verb|sexp| (Section~\ref{sec:pos}) to get the sign
 of the expression \verb|e|, and then passes this to the helper
 function \verb|search'|.  The monadic approach results in clean,
 simple code, while still using helper functions as advocated by Garby
@@ -874,27 +861,27 @@ of the definition.  \verb|≪Unknown| says that the static type
 \verb|UNKNOWN| approximates any runtime type \verb|T|.  This clause
 expresses the same idea that Garby et al. proposed, as shown in the
 definition of $\le$ in Figure~\ref{fig:orig}.  It allows the type
-checker to signal uncertainty, whenever desired.  The clause
-\verb|≪Data| says that if the static type is \verb|DATA b T|, then the
-runtime type may be \verb|DATA T|.  The critical point here is that
-the static type can indicate (via boolean \verb|b|) that a term might
-diverge, and it is still acceptable if the runtime type indicates that
-it actually did converge to a value of type \verb|T|.  A similar idea
-is expressed in the clause \verb|≪Fail| for the \verb|FAIL| type.  The
-clause \verb|≪Unfinished| expresses that any static type is acceptable
-for a computation that has not yet finished.  This might seem
-counterintuitive, because some static types indicate convergence.  In
-fact, with our expression language, it cannot happen that a term is
-statically judged to be terminating, but for some smaller values of
-the fuel parameter to the interpreter evaluation produces
-\verb|Unfinished|.  But the specification allows that, and it could
-occur, if the type checker reported solvability of polynomials, not
-just unsolvability.  So with our language, the only case where
-\verb|≪Unfinished| can arise is when \verb|T| is \verb|LOOP|.  This
-is, of course, a critical case, because it expresses the desired
-soundness property when the type checker reports \verb|LOOP|: the
-evaluator must always return \verb|Unfinished| in that situation,
-to satisfy the specification.
+checker to signal uncertainty, whenever desired, by returning type
+\verb|UNKNOWN|.  The clause \verb|≪Data| says that if the static type
+is \verb|DATA b T|, then the runtime type may be \verb|DATA T|.  The
+critical point here is that the static type can indicate (via boolean
+\verb|b|) that a term might diverge, and it is still acceptable if the
+runtime type indicates that it actually did converge to a value of
+type \verb|T|.  A similar idea is expressed in the clause \verb|≪Fail|
+for the \verb|FAIL| type.  The clause \verb|≪Unfinished| expresses
+that any static type is acceptable for a computation that has not yet
+finished.  This might seem counterintuitive, because some static types
+indicate convergence.  In fact, with our expression language, it
+cannot happen that a term is statically judged to be terminating, but
+for some smaller values of the fuel parameter to the interpreter
+evaluation produces \verb|Unfinished|.  But the specification allows
+that, and it could occur, if the type checker reported solvability of
+polynomials, not just unsolvability.  So with our language, the only
+case where \verb|≪Unfinished| can arise is when \verb|T| is
+\verb|LOOP|.  This is, of course, a critical case, because it
+expresses the desired soundness property when the type checker reports
+\verb|LOOP|: the evaluator must always return \verb|Unfinished| in
+that situation.
 
 \begin{figure}
 \begin{verbatim}  
@@ -908,11 +895,12 @@ data _≪_ : EType Data → RType → Set where
 \label{fig:ll}
 \end{figure}  
 
-Several lemmas about the relation on types are listed in Figure~\ref{fig:lllem}.
-The first says that relaxing the possibility of divergence in a static type
-preserves the relation.  The next two express the basic order-theoretic
-property that $\sqcap$ computes a lower bound.  These properties are also
-used by Garby et al. for their relation.
+Several lemmas about the relation on types are listed in
+Figure~\ref{fig:lllem}.  The first says that relaxing the possibility
+of divergence in a static type preserves the relation.  The next two
+express the basic order-theoretic property that $\sqcap$ computes a
+lower bound.  These properties are also used by Garby et al. for their
+relation.  The proofs of these are straightforward.
 
 \begin{figure}
 \begin{verbatim}  
@@ -935,7 +923,7 @@ used by Garby et al. for their relation.
 \subsection{Monadic Structure of the Relation}
 
 The relation $\ll$ of Figure~\ref{fig:ll} exhibits a monadic structure, which we use below
-to abstract boilerplate from the proof of soundness.  The combinators corresponding
+to abstract common reasoning about errors from the proof of soundness.  The combinators corresponding
 to monadic return and bind are shown in Figure~\ref{fig:llmon}.  The first, \verb|return≪|,
 relates the values produced by the return combinators of the \verb|EType| and \verb|Result|
 monads.  The second is more complex.  It aims to relate two binds:
@@ -1040,14 +1028,16 @@ From the type of the combinator, this means we have two subgoals to prove, where
 texp e ≪ tresult (eval g e v)
 \end{verbatim}
 \noindent But this is just what the induction hypothesis (i.e., under
-Curry-Howard, a recursive call to \verb|texp-soundness| produces for
-\verb|e|).  So we need only prove the second premise of the
-combinator.  The proof in Figure~\ref{fig:caseiszero} is sufficient;
-it simply does not make use of the extra premises that the combinator
-provides (about the identity of \verb|a|, etc.).  They are not needed
-here.  The two cases of the proof, for the two constructors of
-\verb|Val|, are easily proved from the defining clauses for $\ll$.
-Those cases are:
+Curry-Howard, a recursive call to \verb|texp-soundness|) produces for
+\verb|e|.  So we need only prove the second premise of the combinator.
+The proof in Figure~\ref{fig:caseiszero} is sufficient; it simply does
+not make use of the extra premises that the combinator provides (about
+the identity of \verb|a|, etc.).  They are not needed here.  (As an
+aside, by making those extra premises implicit, we have Agda do the
+work of discarding them in using \verb|case-isZero| where a function
+with more implicit arguments is required.) The two cases of the proof,
+for the two constructors of \verb|Val|, are easily proved from the
+defining clauses for $\ll$.  Those cases are:
 \begin{enumerate}
 \item \verb|isZero' (tval (I x)) ≪ tresult (isZero (I x))|
 \item \verb|isZero' (tval (B x)) ≪ tresult (isZero (B x))|
@@ -1082,12 +1072,21 @@ texp-soundness {IsZero e} {g} {v} =
   case-isZero  
 \end{verbatim}
 \noindent We just use the induction hypothesis (i.e., make a recursive
-call) for \verb|e|, and bind the result to \verb|case-iszero| using
+call) for \verb|e|, and connect this with \verb|case-iszero| using
 the proof combinator.
 
 
-The case for \verb|Add| expressions works just as nicely.  We have this easily proven lemma,
-where we relate data in the case of two integer values, and failures in all others:
+The case for \verb|Add| expressions works just as nicely.  We have an easy lemma in Figure~\ref{fig:addll},
+where we relate data in the case of two integer values, and failures in all others.
+The clause for \verb|texp-soundness| is again very simple, using the combinator:
+\begin{verbatim}
+texp-soundness {Add e1 e2} {g} {v} = 
+  texp-soundness{e1}{g}{v} >>=≪
+  texp-soundness{e2}{g}{v} >>=≪
+  case-add
+\end{verbatim}
+
+\begin{figure}
 \begin{verbatim}
 case-add : ∀{v1 v2 : Val} →
            add' (tval v1) (tval v2) ≪ tresult (add v1 v2)
@@ -1096,13 +1095,9 @@ case-add {I _} {B _} = ≪Fail
 case-add {B _} {I _} = ≪Fail
 case-add {B _} {B _} = ≪Fail
 \end{verbatim}
-\noindent And the clause for \verb|texp-soundness| is again very simple, using the combinator:
-\begin{verbatim}
-texp-soundness {Add e1 e2} {g} {v} = 
-  texp-soundness{e1}{g}{v} >>=≪
-  texp-soundness{e2}{g}{v} >>=≪
-  case-add
-\end{verbatim}
+\caption{Lemma relating helper functions for typing and evaluation of \texttt{Add} expressions}
+\label{fig:addll}
+\end{figure}
 
 \subsection{The Proof of Soundness: Conditionals}
 
@@ -1169,7 +1164,7 @@ corresponds to greater uncertainty.  The \verb|Unknown| type is a
 minimal element, and \verb|Nonneg| is less than \verb|Pos| (as it
 reflects the additional uncertainty of whether a term might evaluate
 to zero or else be strictly positive).  The proof of
-\verb|sexp-soundness| is simpler than the proof of soundness for
+\verb|sexp-soundness| (omitted) is simpler than the proof of soundness for
 \verb|texp|, which we are in the middle of presenting.  For \verb|Add|
 expressions, it uses a similar proof-level monadic bind operator,
 shown in Figure~\ref{fig:bindllsign}.  As for typing, this operator is
@@ -1373,7 +1368,19 @@ computation.  For this, instead of relating static and runtime types,
 one might be better off relating static types and results of
 evaluation directly.  This might take the approach closer to usual
 semantic approaches in Programming Languages, like step-indexed
-logical relations~\cite{ahmed06}.
+logical relations~\cite{ahmed06}.  Finally, we have only proven a
+soundness property relating typing to evaluation.  Also of interest
+would be a liveness property: if the static type indicates
+termination, then indeed, there is a value for the fuel parameter for
+which the evaluator will terminate with either \verb|Fail| or a
+value.  This should be relatively simple to prove here, because our
+static typing does not report any terms terminating that contain
+\verb|Search|.  In general, however, the problem of proving
+termination for a total language can be challenging, and is beyond
+the scope of our extension of~\citet{garby+25}.
+\textbf{Acknowledgments:} thanks to Ayden Lamparski for suggesting
+parameterizing \verb|FAIL| for possible divergence or termination, similarly
+to the data types.
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{paper.bib}
